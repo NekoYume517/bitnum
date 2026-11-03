@@ -94,6 +94,7 @@ pub let version : String
 pub fn zero_of_sign(Bool) -> Double
 
 // Errors
+#derive(@debug.Debug)
 pub(all) suberror BitnumError {
   DpdRedundantCodeAccepted(UInt32, String)
   CombinationInvalid(UInt32)
@@ -103,28 +104,30 @@ pub(all) suberror BitnumError {
   TruncatedInput(Int32, Int32)
   NanPayloadTooLarge(Int32, Int32)
   DpdDigitGroupMisaligned(Int32)
-} derive(@debug.Debug)
+}
 pub fn BitnumError::describe(Self) -> String
 
 // Types and methods
+#derive(Eq, @debug.Debug)
 pub(all) struct BFloat16 {
   sign : Int32
   exponent : Int32
   significand : Int32
   kind : FloatClass
-} derive(Eq, @debug.Debug)
+}
 pub fn BFloat16::bits(Self) -> UInt16
 pub fn BFloat16::decode(UInt16) -> Self
 pub fn BFloat16::encode(Self) -> UInt16
 pub fn BFloat16::to_f32(Self) -> Float
 pub fn BFloat16::to_f64(Self) -> Double
 
+#derive(Eq, @debug.Debug)
 pub(all) struct Binary16 {
   sign : Int32
   exponent : Int32
   significand : Int32
   kind : FloatClass
-} derive(Eq, @debug.Debug)
+}
 pub fn Binary16::bits(Self) -> UInt16
 pub fn Binary16::decode(UInt16) -> Self
 pub fn Binary16::encode(Self) -> UInt16
@@ -133,12 +136,13 @@ pub fn Binary16::is_special(Self) -> Bool
 pub fn Binary16::nan_payload(Self) -> Int32
 pub fn Binary16::to_f64(Self) -> Double
 
+#derive(Eq, @debug.Debug)
 pub(all) struct Decimal {
   negative : Bool
   coefficient : @bigint.BigInt
   exponent : Int32
   kind : DecimalKind
-} derive(Eq, @debug.Debug)
+}
 pub fn Decimal::adjusted_exponent(Self) -> Int32
 pub fn Decimal::digit_count(Self) -> Int32
 pub fn Decimal::infinity(Bool) -> Self
@@ -150,11 +154,12 @@ pub fn Decimal::nan(Bool, @bigint.BigInt) -> Self
 pub fn Decimal::to_scientific_string(Self) -> String
 pub fn Decimal::zero(Bool, Int32) -> Self
 
+#derive(Eq, @debug.Debug)
 pub(all) enum DecimalFormat {
   Decimal32
   Decimal64
   Decimal128
-} derive(Eq, @debug.Debug)
+}
 pub fn DecimalFormat::bias(Self) -> Int32
 pub fn DecimalFormat::biased_exponent_field_max(Self) -> Int32
 pub fn DecimalFormat::biased_exponent_max(Self) -> Int32
@@ -179,40 +184,45 @@ pub fn DecimalFormat::name(Self) -> String
 pub fn DecimalFormat::nan_payload_bits(Self) -> Int32
 pub fn DecimalFormat::to_hex(Self, @bigint.BigInt) -> String
 
+#derive(Eq, @debug.Debug)
 pub(all) enum DecimalKind {
   DFinite
   DInfinity
   DNan
   DSignalingNan
-} derive(Eq, @debug.Debug)
+}
 pub fn DecimalKind::label(Self) -> String
 
+#derive(Eq, @debug.Debug)
 pub(all) struct DecodedDecimal {
   value : Decimal
   redundant_groups : Int32
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub(all) enum FloatClass {
   Zero
   Subnormal
   Normal
   Infinity
   Nan
-} derive(Eq, @debug.Debug)
+}
 pub fn FloatClass::label(Self) -> String
 
+#derive(Eq, @debug.Debug)
 pub(all) struct FloatConversion {
   bits : UInt16
   inexact : Bool
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub(all) enum RoundingMode {
   NearestEven
   NearestAway
   TowardZero
   TowardPositive
   TowardNegative
-} derive(Eq, @debug.Debug)
+}
 
 // Type aliases
 
