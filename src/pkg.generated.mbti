@@ -1,0 +1,219 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "NekoYume517/bitnum/src"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub let bfloat16_bias : Int32
+
+pub let bfloat16_exp_bits : Int32
+
+pub let bfloat16_patterns : Int32
+
+pub let bfloat16_sig_bits : Int32
+
+pub fn bfloat16_value_text(UInt16) -> String
+
+pub fn big_slice(@bigint.BigInt, Int32, Int32) -> @bigint.BigInt
+
+pub fn big_splice(@bigint.BigInt, @bigint.BigInt, Int32) -> @bigint.BigInt
+
+pub let binary16_bias : Int32
+
+pub let binary16_exp_bits : Int32
+
+pub let binary16_patterns : Int32
+
+pub let binary16_sig_bits : Int32
+
+pub fn binary16_value_text(UInt16) -> String
+
+pub fn bit_length64(UInt64) -> Int32
+
+pub fn bit_length_big(@bigint.BigInt) -> Int32
+
+pub fn clz64(UInt64) -> Int32
+
+pub fn datum_class_label(FloatClass) -> String
+
+pub fn describe_bfloat16(UInt16) -> String
+
+pub fn describe_binary16(UInt16) -> String
+
+pub fn describe_decimal(DecimalFormat, @bigint.BigInt) -> String raise BitnumError
+
+pub fn digit_count_big(@bigint.BigInt) -> Int32
+
+pub fn dpd_decode3(Int32) -> (Int32, Int32, Int32)
+
+pub fn dpd_decode3_checked(Int32) -> (Int32, Int32, Int32, Bool)
+
+pub fn dpd_encode3(Int32, Int32, Int32) -> Int32
+
+pub fn dpd_is_canonical(Int32) -> Bool
+
+pub let dpd_redundant_codes : Array[Int32]
+
+pub fn dpd_triple_text(Int32) -> String
+
+pub fn format_double(Double) -> String
+
+pub fn infinity_double() -> Double
+
+pub fn low_mask64(Int32) -> UInt64
+
+pub fn numerically_equal(Decimal, Decimal) -> Bool
+
+pub fn of_f32(Float, RoundingMode) -> FloatConversion
+
+pub fn of_f32_round(Float) -> FloatConversion
+
+pub fn of_f32_truncate(Float) -> UInt16
+
+pub fn of_f64(Double, RoundingMode) -> FloatConversion raise BitnumError
+
+pub fn pad_left(String, Int32) -> String
+
+pub fn pad_right(String, Int32) -> String
+
+pub fn parse_decimal(StringView) -> Decimal raise BitnumError
+
+pub fn popcount64(UInt64) -> Int32
+
+pub fn pow2_exact(Int32) -> Double
+
+pub fn quiet_nan_double() -> Double
+
+pub fn truncate_round_differ(Float) -> Bool
+
+pub let version : String
+
+pub fn zero_of_sign(Bool) -> Double
+
+// Errors
+pub(all) suberror BitnumError {
+  DpdRedundantCodeAccepted(UInt32, String)
+  CombinationInvalid(UInt32)
+  CoefficientTooLarge(Int32, Int32)
+  ExponentOutOfRange(Int32, Int32, Int32)
+  InexactConversion(String)
+  TruncatedInput(Int32, Int32)
+  NanPayloadTooLarge(Int32, Int32)
+  DpdDigitGroupMisaligned(Int32)
+} derive(@debug.Debug)
+pub fn BitnumError::describe(Self) -> String
+
+// Types and methods
+pub(all) struct BFloat16 {
+  sign : Int32
+  exponent : Int32
+  significand : Int32
+  kind : FloatClass
+} derive(Eq, @debug.Debug)
+pub fn BFloat16::bits(Self) -> UInt16
+pub fn BFloat16::decode(UInt16) -> Self
+pub fn BFloat16::encode(Self) -> UInt16
+pub fn BFloat16::to_f32(Self) -> Float
+pub fn BFloat16::to_f64(Self) -> Double
+
+pub(all) struct Binary16 {
+  sign : Int32
+  exponent : Int32
+  significand : Int32
+  kind : FloatClass
+} derive(Eq, @debug.Debug)
+pub fn Binary16::bits(Self) -> UInt16
+pub fn Binary16::decode(UInt16) -> Self
+pub fn Binary16::encode(Self) -> UInt16
+pub fn Binary16::is_quiet_nan(Self) -> Bool
+pub fn Binary16::is_special(Self) -> Bool
+pub fn Binary16::nan_payload(Self) -> Int32
+pub fn Binary16::to_f64(Self) -> Double
+
+pub(all) struct Decimal {
+  negative : Bool
+  coefficient : @bigint.BigInt
+  exponent : Int32
+  kind : DecimalKind
+} derive(Eq, @debug.Debug)
+pub fn Decimal::adjusted_exponent(Self) -> Int32
+pub fn Decimal::digit_count(Self) -> Int32
+pub fn Decimal::infinity(Bool) -> Self
+pub fn Decimal::is_nan(Self) -> Bool
+pub fn Decimal::is_negative(Self) -> Bool
+pub fn Decimal::is_zero(Self) -> Bool
+pub fn Decimal::make(Bool, @bigint.BigInt, Int32) -> Self raise BitnumError
+pub fn Decimal::nan(Bool, @bigint.BigInt) -> Self
+pub fn Decimal::to_scientific_string(Self) -> String
+pub fn Decimal::zero(Bool, Int32) -> Self
+
+pub(all) enum DecimalFormat {
+  Decimal32
+  Decimal64
+  Decimal128
+} derive(Eq, @debug.Debug)
+pub fn DecimalFormat::bias(Self) -> Int32
+pub fn DecimalFormat::biased_exponent_field_max(Self) -> Int32
+pub fn DecimalFormat::biased_exponent_max(Self) -> Int32
+pub fn DecimalFormat::bits(Self) -> Int32
+pub fn DecimalFormat::byte_width(Self) -> Int32
+pub fn DecimalFormat::coef_cont_bits(Self) -> Int32
+pub fn DecimalFormat::decode_bytes(Self, Bytes) -> DecodedDecimal raise BitnumError
+pub fn DecimalFormat::decode_raw(Self, @bigint.BigInt) -> DecodedDecimal raise BitnumError
+pub fn DecimalFormat::digits(Self) -> Int32
+pub fn DecimalFormat::emax(Self) -> Int32
+pub fn DecimalFormat::emax_top(Self) -> Int32
+pub fn DecimalFormat::emin(Self) -> Int32
+pub fn DecimalFormat::encode_bytes(Self, Decimal) -> Bytes raise BitnumError
+pub fn DecimalFormat::encode_raw(Self, Decimal) -> @bigint.BigInt raise BitnumError
+pub fn DecimalFormat::etin_y(Self) -> Int32
+pub fn DecimalFormat::exp_cont_bits(Self) -> Int32
+pub fn DecimalFormat::from_hex(Self, String) -> @bigint.BigInt raise BitnumError
+pub fn DecimalFormat::geometry_is_consistent(Self) -> Bool
+pub fn DecimalFormat::hex_width(Self) -> Int32
+pub fn DecimalFormat::max_exponent_for(Self, @bigint.BigInt) -> Int32
+pub fn DecimalFormat::name(Self) -> String
+pub fn DecimalFormat::nan_payload_bits(Self) -> Int32
+pub fn DecimalFormat::to_hex(Self, @bigint.BigInt) -> String
+
+pub(all) enum DecimalKind {
+  DFinite
+  DInfinity
+  DNan
+  DSignalingNan
+} derive(Eq, @debug.Debug)
+pub fn DecimalKind::label(Self) -> String
+
+pub(all) struct DecodedDecimal {
+  value : Decimal
+  redundant_groups : Int32
+} derive(Eq, @debug.Debug)
+
+pub(all) enum FloatClass {
+  Zero
+  Subnormal
+  Normal
+  Infinity
+  Nan
+} derive(Eq, @debug.Debug)
+pub fn FloatClass::label(Self) -> String
+
+pub(all) struct FloatConversion {
+  bits : UInt16
+  inexact : Bool
+} derive(Eq, @debug.Debug)
+
+pub(all) enum RoundingMode {
+  NearestEven
+  NearestAway
+  TowardZero
+  TowardPositive
+  TowardNegative
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits

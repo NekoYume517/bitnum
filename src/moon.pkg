@@ -1,0 +1,9 @@
+import {
+  "moonbitlang/x/fs",
+}
+
+pkgtype(kind: "library")
+
+options(
+  warn_list: "-unused_package-test_unqualified_package-deprecated-implicit_impl_as_method-unused_error_type",
+)

@@ -1,0 +1,323 @@
+# bitnum — API 契约
+
+> 本文件记录的是**实际存在的**公开 API。签名逐条取自 `src/pkg.generated.mbti`
+> （`moon info` 生成），不是设计稿。要复核：`moon info` 后看 `src/pkg.generated.mbti`。
+
+模块名：`NekoYume517/bitnum`，库包：`src`，CLI 包：`cmd/bitnum`。
+
+## 0. 全局约定
+
+**不猜。** 无法精确表示时，要么返回带定位信息的错误，要么按**显式传入的**舍入模式
+舍入并把结果标成 `inexact`。这两种结果不混用（PLAN.md §1.3）。
+
+**位序按 IEEE 754-2008 §3.4**：整个编码视为无符号整数，最高位为符号位。
+
+**不含 `moonbitlang/x/decimal`**：十进制三元组用 core 的 `BigInt` 自己实现
+（PLAN.md §1.4）。
+
+**BID 编码不在范围内**，理由见 PLAN.md §4.5，本文不提供相关 API。
+
+## 1. 公共词汇 `src/bits.mbt`
+
+```moonbit
+pub(all) enum RoundingMode {
+  NearestEven      // 就近，平局取偶
+  NearestAway      // 就近，平局远离零
+  TowardZero
+  TowardPositive
+  TowardNegative
+} derive(Eq, Debug)
+
+pub(all) enum FloatClass { Zero; Subnormal; Normal; Infinity; Nan } derive(Eq, Debug)
+pub fn FloatClass::label(Self) -> String        // "zero" / "subnormal" / ...
+
+pub(all) struct FloatConversion {
+  bits : UInt16      // 结果位模式
+  inexact : Bool     // 源值是否被舍入
+} derive(Eq, Debug)
+
+pub fn datum_class_label(FloatClass) -> String  // IEEE §2.1.3 粗分类："finite" / "infinity" / "nan"
+```
+
+`FloatClass` 与 `datum_class_label` **同时存在且都不多余**：前者区分次正规数与正规数，
+后者是标准 §2.1.3 的 *class*（zero / subnormal / normal 统称 finite）。CLI 两处都打印 ——
+`kind=finite` 配指数行的 `(subnormal)`。
+
+位工具（公开供审计，不是内部函数）：
+
+```moonbit
+pub fn popcount64(UInt64) -> Int
+pub fn clz64(UInt64) -> Int              // 零返回 64，故 bit_length64(0) == 0
+pub fn bit_length64(UInt64) -> Int
+pub fn low_mask64(Int) -> UInt64         // n<=0 → 0，n>=64 → 全 1（容器极限，不是钳制）
+pub fn pow2_exact(Int) -> Double         // 精确折半/倍增，不用 @math.pow
+pub fn bit_length_big(BigInt) -> Int
+pub fn big_slice(BigInt, Int, Int) -> BigInt
+pub fn big_splice(BigInt, BigInt, Int) -> BigInt
+pub fn digit_count_big(BigInt) -> Int
+pub fn zero_of_sign(Bool) -> Double
+pub fn infinity_double() -> Double
+pub fn quiet_nan_double() -> Double
+```
+
+`pow2_exact` 用精确折半构建，因为 libm 的 `pow` 只保证 1 ulp 内准确 —— 那个精度不足以
+声称 65536 项 binary16 表精确。
+
+## 2. binary16 `src/binary16.mbt`
+
+```moonbit
+pub let binary16_patterns : Int = 65536
+pub let binary16_exp_bits : Int = 5
+pub let binary16_sig_bits : Int = 10
+pub let binary16_bias : Int = 15
+
+pub(all) struct Binary16 {
+  sign : Int           // 原始符号位
+  exponent : Int       // 原始 5 位指数域，0..31，**不是**减过 bias 的
+  significand : Int    // 原始 10 位尾数域
+  kind : FloatClass
+} derive(Eq, Debug)
+
+pub fn Binary16::decode(UInt16) -> Binary16     // 全 65536 输入无 panic
+pub fn Binary16::encode(Binary16) -> UInt16     // 唯一编码器，故往返按构造成立
+pub fn Binary16::bits(Binary16) -> UInt16
+pub fn Binary16::to_f64(Binary16) -> Double     // 对每个位模式精确
+pub fn of_f64(Double, RoundingMode) -> FloatConversion raise BitnumError
+
+pub fn Binary16::is_special(Binary16) -> Bool
+pub fn Binary16::is_quiet_nan(Binary16) -> Bool
+pub fn Binary16::nan_payload(Binary16) -> Int
+```
+
+解码器**总是**报告存储的原始域，不把指数规范化。这是 `kind` 保持诚实的原因：
+一次解码不会凭空造出一个正规化指数。
+
+`of_f64` 的溢出规则（PLAN.md §2）：就近模式 → ±Inf；`TowardZero` → ±max。
+`Towards...` 定向模式只有在方向指向远离零时才溢出到 Inf。
+
+**NaN 的不对称（有测试锁定，不是遗漏）**：`decode → encode` 保留 10 位 payload；
+`decode → to_f64 → of_f64` 不能，binary64 的 52 位 payload 塞不进 10 位，所以
+`of_f64` 按 PLAN.md §2 产出规范安静 NaN `0x7E00`（保留符号）并标 `inexact`。
+65536 个模式里只有 2 个（两个规范安静 NaN）是这条路径的不动点。
+
+## 3. bfloat16 `src/bfloat16.mbt`
+
+```moonbit
+pub let bfloat16_patterns : Int = 65536
+pub let bfloat16_exp_bits : Int = 8
+pub let bfloat16_sig_bits : Int = 7
+pub let bfloat16_bias : Int = 127
+
+pub(all) struct BFloat16 { sign; exponent; significand; kind : FloatClass }
+
+pub fn BFloat16::decode(UInt16) -> BFloat16
+pub fn BFloat16::encode(BFloat16) -> UInt16
+pub fn BFloat16::bits(BFloat16) -> UInt16
+pub fn BFloat16::to_f32(BFloat16) -> Float        // 精确：尾数零扩展
+pub fn BFloat16::to_f64(BFloat16) -> Double
+
+pub fn of_f32_truncate(Float) -> UInt16                          // 截断，丢弃低 16 位
+pub fn of_f32(Float, RoundingMode) -> FloatConversion            // 显式舍入
+pub fn of_f32_round(Float) -> FloatConversion                    // = of_f32(_, NearestEven)
+pub fn truncate_round_differ(Float) -> Bool                     // 两者是否分歧
+```
+
+`of_f32_truncate` 与 `of_f32` 是**两个不同的函数**，不是同一个加了开关：
+截断最多 2^-8 相对误差，就近舍入是一半。它们分别有名字，调用方不会误取。
+
+截断对 NaN 的类保持：若 NaN 的 payload 全落在被丢弃的低 16 位，
+截断会把 NaN 变成 Inf —— 那是截断唯一能改变数据类的地方，必须防止。
+所以判定基于**源值**（`exp == 0xFF && mantissa != 0`），不是截断后的模式：
+截断后的模式里 Inf 和 payload 耗尽的 NaN 都显示 `sig == 0`，分不开。
+
+## 4. 十进制三元组 `src/decimal.mbt`
+
+```moonbit
+pub(all) enum DecimalKind { DFinite; DInfinity; DNan; DSignalingNan } derive(Eq, Debug)
+pub fn DecimalKind::label(Self) -> String
+
+pub(all) struct Decimal {
+  negative : Bool
+  coefficient : BigInt     // >= 0；符号独立
+  exponent : Int
+  kind : DecimalKind
+} derive(Eq, Debug)
+
+pub fn Decimal::make(Bool, BigInt, Int) -> Decimal raise BitnumError   // 拒绝负系数
+pub fn Decimal::zero(Bool, Int) -> Decimal
+pub fn Decimal::infinity(Bool) -> Decimal
+pub fn Decimal::nan(Bool, BigInt) -> Decimal
+
+pub fn Decimal::is_zero(Self) -> Bool
+pub fn Decimal::is_nan(Self) -> Bool
+pub fn Decimal::is_negative(Self) -> Bool     // 符号位，不是"小于零"
+pub fn Decimal::digit_count(Self) -> Int
+pub fn Decimal::adjusted_exponent(Self) -> Int
+pub fn Decimal::to_scientific_string(Self) -> String
+
+pub fn parse_decimal(StringView) -> Decimal raise BitnumError
+pub fn numerically_equal(Decimal, Decimal) -> Bool
+```
+
+变体名带 `D` 前缀（`DInfinity`、`DNan`）是因为它们和 `FloatClass` 的
+`Infinity`/`Nan` 同包，不限定就是歧义。
+
+`Decimal` **只承载精确三元组**：无 context、无 preferred exponent、无隐式舍入
+（PLAN.md §4.1）。系数是 `BigInt`，因为 decimal128 有 34 位，窄化成 64 位会让格式无法实现。
+
+`to_scientific_string` 是标准 §5.12.1 的 to-scientific-string：`exponent <= 0` 且
+`adjusted >= -6` 用普通记数法，否则科学记数法。边界正好在 `-6`：
+`-0.00000750`（adjusted -6）是普通形式，`-7.50E-7`（adjusted -7）是科学形式。
+568 条向量的 `original_text` 列逐字符锁定这一点。
+
+`parse_decimal` **故意不接受** `NaN` / `Infinity`（那不是数字，由 wire 层从字段构造，
+或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
+一个比文法更宽容的解析器会让调用方错误和解码器缺陷无法区分。
+
+`numerically_equal` 忽略尾随零填充（`1.0` 与 `1.00` 数值相等）但**不**忽略符号或指数。
+标准把 `1.0` 和 `1.00` 当作不同三元组，本包也保持这个区分，所以两个比较函数都存在，
+没有一个叫裸 `equal`。
+
+## 5. DPD `src/dpd.mbt`
+
+```moonbit
+pub let dpd_redundant_codes : Array[Int]      // 24 个，升序
+
+pub fn dpd_encode3(Int, Int, Int) -> Int                       // 10 位
+pub fn dpd_decode3(Int) -> (Int, Int, Int)                      // 全 1024 输入无 panic
+pub fn dpd_decode3_checked(Int) -> (Int, Int, Int, Bool)        // 第 4 项 = 是否冗余
+pub fn dpd_is_canonical(Int) -> Bool
+pub fn dpd_triple_text(Int) -> String                           // "8,8,8"
+```
+
+用 **Cowlishaw 布尔方程**，不是 1000 项查表（PLAN.md §4.2）。理由是可审计性：
+方程能逐行对照标准表格，查表只能和另一张表对差。
+
+**24 个冗余码被接受，不是错误**（PLAN.md §4.4）。10 位有 1024 种组合，只有 1000 是三元组的像。
+标准把多出来的 24 个解码成固定的 8/9 序列，官方 `dectest` 的编码套件里每个格式正好有
+24 条这样的用例。所以 `dpd_decode3` 接受它们；`dpd_encode3` 永远产生不了它们
+（穷举 1000 个输入锁定了注入性）。
+
+## 6. 线格式 `src/decimal_wire.mbt`
+
+```moonbit
+pub(all) enum DecimalFormat { Decimal32; Decimal64; Decimal128 } derive(Eq, Debug)
+
+// 几何（编译器算出来的派生量，不是硬编码的第二份表）
+pub fn DecimalFormat::bits(Self) -> Int
+pub fn DecimalFormat::byte_width(Self) -> Int
+pub fn DecimalFormat::exp_cont_bits(Self) -> Int
+pub fn DecimalFormat::coef_cont_bits(Self) -> Int      // = bits - 1 - 5 - exp_cont
+pub fn DecimalFormat::digits(Self) -> Int
+pub fn DecimalFormat::bias(Self) -> Int
+pub fn DecimalFormat::name(Self) -> String
+
+// 指数范围
+pub fn DecimalFormat::biased_exponent_field_max(Self) -> Int   // 2^(exp_cont+2)-1：域容量
+pub fn DecimalFormat::biased_exponent_max(Self) -> Int         // Emax+bias：合法上限
+pub fn DecimalFormat::emax(Self) -> Int                        // 96 / 384 / 6144
+pub fn DecimalFormat::emin(Self) -> Int                        // -95 / -383 / -6143
+pub fn DecimalFormat::etin_y(Self) -> Int                      // -101 / -398 / -6176
+pub fn DecimalFormat::emax_top(Self) -> Int                    // 90 / 369 / 6111
+pub fn DecimalFormat::max_exponent_for(Self, BigInt) -> Int
+pub fn DecimalFormat::nan_payload_bits(Self) -> Int
+pub fn DecimalFormat::geometry_is_consistent(Self) -> Bool      // 自检，测试调用
+
+// 编解码
+pub(all) struct DecodedDecimal {
+  value : Decimal
+  redundant_groups : Int      // 有几个系数分组是非规范 DPD 码
+} derive(Eq, Debug)
+
+pub fn DecimalFormat::decode_raw(Self, BigInt) -> DecodedDecimal raise BitnumError
+pub fn DecimalFormat::encode_raw(Self, Decimal) -> BigInt raise BitnumError
+pub fn DecimalFormat::decode_bytes(Self, Bytes) -> DecodedDecimal raise BitnumError
+pub fn DecimalFormat::encode_bytes(Self, Decimal) -> Bytes raise BitnumError
+pub fn DecimalFormat::to_hex(Self, BigInt) -> String
+pub fn DecimalFormat::from_hex(Self, String) -> BigInt raise BitnumError
+pub fn DecimalFormat::hex_width(Self) -> Int
+```
+
+**`decode_raw` / `encode_raw` 的容器约定**：`raw` 是 BigInt，右对齐在低 `bits` 位。
+高出的位置被**拒绝**（`TruncatedInput`），不截断。一个约定服务三种格式，不用三份位运算。
+
+**两个指数上限同时生效，取小者** —— 这是全项目最容易搞错的一处：
+
+| 上限 | 依据 | 效果 |
+|---|---|---|
+| `adjusted <= Emax` | 标准：调整指数不得超过 Emax | 七位系数在 `99...9` 时指数 ≤ 90 |
+| `exp_top <= 2` | 组合字段 `00/01/10` 只有 2 位；`11` 分支里 `exp_top == 3` 会撞 `11110`/`11111`（Inf/NaN） | 指数 ≤ `Emax_top` = 90 / 369 / 6111 |
+
+两者在满精度处**恰好重合**（`Emax - (p-1) == Emax_top`），这就是格式自洽的地方：
+要够到 `Emax` 必须有 p 位有效数字，而那 p 位已经把指数压到组合字段放得下的位置。
+低于满精度时组合字段上限赢 —— 所以 `dectest` 把 `0e+10000` 钳到
+`0E+90 / 0E+369 / 0E+6111`，而不是钳到 `Emax`。
+
+**NaN 布局是二进制直觉的反面**。NaN 时组合字段是 `11111`，其下一位是 **signaling 标志**
+（`0` = quiet），再往下才是诊断 payload。`ddEncode.decTest` 直接钉死：
+
+```
+0x7c00000000000000 -> NaN       （signaling 位为 0）
+0x7e00000000000000 -> sNaN      （signaling 位为 1）
+```
+
+二进制格式里安静位是**置位**的那个，照类比推出一个"看起来对"的 payload 在这里是错的。
+
+**Infinity 是 `11110` 开头的整个族**，不是只有 `0x78`。`dsEncode.decTest` 里
+`0x78 / 0x79 / 0x7a / 0x7b` 全是 Infinity，因为组合字段为 `11110` 时指数续域被忽略。
+只认 `0x78` 的解码器会拒掉合法编码，而纯有限值的往返测试发现不了这个。
+
+## 7. 渲染 `src/format.mbt`
+
+```moonbit
+pub fn describe_binary16(UInt16) -> String
+pub fn describe_bfloat16(UInt16) -> String
+pub fn describe_decimal(DecimalFormat, BigInt) -> String raise BitnumError
+pub fn format_double(Double) -> String
+pub fn binary16_value_text(UInt16) -> String
+pub fn bfloat16_value_text(UInt16) -> String
+pub fn pad_left(String, Int) -> String
+pub fn pad_right(String, Int) -> String
+```
+
+这一层只服务诊断：编解码器不依赖它，任何往返声明也不建立在它上面（PLAN.md §0）。
+它存在的理由是让 `bitnum value` 能打印**为什么**一个模式是这个值，而不只是那个数。
+
+## 8. 错误 `src/error.mbt`
+
+```moonbit
+pub(all) suberror BitnumError {
+  DpdRedundantCodeAccepted(UInt, String)    // 哪个码、解成什么
+  CombinationInvalid(UInt)
+  CoefficientTooLarge(Int, Int)             // 位数, 容器可容位数
+  ExponentOutOfRange(Int, Int, Int)         // 值, min, max
+  InexactConversion(String)                 // 源→目标描述
+  TruncatedInput(Int, Int)                  // 需要, 实际
+  NanPayloadTooLarge(Int, Int)              // payload 位宽, 容器容量
+  DpdDigitGroupMisaligned(Int)              // 分组长度不是 3 的倍数
+} derive(Debug)
+
+pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 不会漂移
+```
+
+每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
+`DpdDigitGroupMisaligned` 是对 PLAN.md §5 的追加，与 copybook 的
+`RecordRemainder` 同类 —— 属于补充而非签名变更。
+
+## 9. CLI `cmd/bitnum/main.mbt`
+
+```
+bitnum value <format> <hexbytes>    # 字节 → 字段分解 + 数值
+bitnum bits  <format> <value>       # 人类表达式 → 十六进制字节
+bitnum table <format>               # 边界值表
+bitnum check <format> <hexbytes>    # 往返校验
+```
+
+`format ∈ {binary16, bfloat16, decimal32, decimal64, decimal128}`
+退出码：0 成功 / 1 数据错误 / 2 用法错误。
+
+`bits` 对二进制格式走**最近偶数舍入**，并在结果被舍入时向 stderr 打一条说明
+（stdout 保持干净，可管道）。十进制侧不舍入：`1.23` 精确编码成系数 123、指数 -2。
+
+`check` 在非规范 DPD 输入上退出 1 —— 那是**合法但无规范形式**的输入，
+编码器的值域天然排除那 24 个码。它被单独说明，而不是折进"静默通过"。

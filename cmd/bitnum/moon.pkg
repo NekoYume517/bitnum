@@ -1,0 +1,13 @@
+import {
+  "NekoYume517/bitnum/src" @lib,
+  "moonbitlang/x/sys",
+  "moonbitlang/core/env",
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/string" @strconv,
+}
+
+pkgtype(kind: "executable")
+
+options(
+  warn_list: "-deprecated-implicit_impl_as_method-unused_error_type",
+)
