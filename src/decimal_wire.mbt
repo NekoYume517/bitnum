@@ -39,11 +39,12 @@
 /// copies of the same code. A wrong constant in this table is silent, so
 /// `geometry_is_consistent` recomputes every derived quantity and the tests assert
 /// it.
+#derive(Eq, Debug)
 pub(all) enum DecimalFormat {
   Decimal32
   Decimal64
   Decimal128
-} derive(Eq, Debug)
+}
 
 ///|
 /// Wire width in bits.
@@ -248,10 +249,11 @@ pub fn DecimalFormat::geometry_is_consistent(self : DecimalFormat) -> Bool {
 /// (PLAN.md §1.2, §4.4). The count exists so a caller can audit an input the
 /// encoder could never have produced — which is exactly what the 24 `dectest`
 /// cases per format are.
+#derive(Eq, Debug)
 pub(all) struct DecodedDecimal {
   value : Decimal
   redundant_groups : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 /// Decode wire bits into an exact triple.

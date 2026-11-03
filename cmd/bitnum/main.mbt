@@ -241,7 +241,7 @@ fn cmd_bits(format_name : String, text : String) -> Int32 raise {
     }
     Bfloat16Fmt => {
       let x = parse_double_text(text)
-      let conv = @lib.of_f32(x.to_float(), @lib.NearestEven)
+      let conv = @lib.of_f32(Float::from_double(x), @lib.NearestEven)
       println(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)))
       if conv.inexact {
         eprintln("bitnum: note: rounded (inexact)")

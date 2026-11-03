@@ -31,12 +31,13 @@ pub let bfloat16_bias : Int32 = 127
 
 ///|
 /// The decoded view of one bfloat16 bit pattern.
+#derive(Eq, Debug)
 pub(all) struct BFloat16 {
   sign : Int32
   exponent : Int32
   significand : Int32
   kind : FloatClass
-} derive(Eq, Debug)
+}
 
 ///|
 /// Split a 16-bit pattern into fields. Total on all 65536 inputs.

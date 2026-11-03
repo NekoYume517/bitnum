@@ -7,6 +7,7 @@
 /// cannot hold, and this package refuses to conflate the two (PLAN.md §1.2).
 
 ///|
+#derive(Debug)
 pub(all) suberror BitnumError {
   /// A DPD code that no 3-digit triple maps to. `code` is the 10-bit value,
   /// `resolved` describes the 8/9 sequence the decoder produced for it.
@@ -26,7 +27,7 @@ pub(all) suberror BitnumError {
   /// A decimal digit buffer whose length is not a multiple of three, which no
   /// DPD continuation field can hold.
   DpdDigitGroupMisaligned(Int32)
-} derive(Debug)
+}
 
 ///|
 /// Human-readable description, used by the CLI and by tests that want to assert

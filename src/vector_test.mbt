@@ -101,7 +101,7 @@ test "examples/vectors-binary16.tsv: every bfloat16 row matches" {
     if not(label.has_prefix("bf16-")) {
       continue
     }
-    let f = parse_hex_u64(row[0]).to_uint().reinterpret_as_float()
+    let f = Float::reinterpret_from_uint(parse_hex_u64(row[0]).to_uint())
     let mode = rounding_mode_of(row[1])
     let want = parse_hex_u64(row[2]).to_uint()
     let want_inexact = row[3] == "1"

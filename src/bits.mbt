@@ -12,25 +12,27 @@
 /// The five modes are required up front (PLAN.md §2) because "round to nearest,
 /// ties to even" is *not* what a printf-style conversion does and the difference
 /// is visible at every one of the 65536 binary16 boundaries.
+#derive(Eq, Debug)
 pub(all) enum RoundingMode {
   NearestEven
   NearestAway
   TowardZero
   TowardPositive
   TowardNegative
-} derive(Eq, Debug)
+}
 
 ///|
 /// The five kinds of binary floating-point datum (IEEE 754-2008 §2.1.3), with
 /// `Zero` and `Subnormal` kept apart: they share an exponent field of zero but
 /// behave differently, and conflating them is the classic binary16 bug.
+#derive(Eq, Debug)
 pub(all) enum FloatClass {
   Zero
   Subnormal
   Normal
   Infinity
   Nan
-} derive(Eq, Debug)
+}
 
 ///|
 /// Canonical spelling, used by the CLI's field breakdown and by tests that want
@@ -49,10 +51,11 @@ pub fn FloatClass::label(self : FloatClass) -> String {
 /// Result of a rounding conversion: the produced bit pattern and whether the
 /// source value was representable exactly (PLAN.md §1.3 — an inexact result is
 /// *marked*, never returned silently).
+#derive(Eq, Debug)
 pub(all) struct FloatConversion {
   bits : UInt16
   inexact : Bool
-} derive(Eq, Debug)
+}
 
 ///|
 /// Number of set bits in a 64-bit word.

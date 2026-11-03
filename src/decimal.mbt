@@ -20,13 +20,14 @@
 /// The variant names carry a `D` prefix (`DInfinity`, `DNan`, ...) so they never
 /// collide with binary16's `FloatClass` variants: both enums live in this package,
 /// and an unqualified `Infinity` would be ambiguous at every use site.
+#derive(Eq, Debug)
 pub(all) enum DecimalKind {
   DFinite
   DInfinity
   DNan
   /// A NaN carrying diagnostic information (the trailing significand field).
   DSignalingNan
-} derive(Eq, Debug)
+}
 
 ///|
 /// Canonical spelling, for the CLI and for tests.
@@ -41,12 +42,13 @@ pub fn DecimalKind::label(self : DecimalKind) -> String {
 
 ///|
 /// An exact decimal triple with its datum kind.
+#derive(Eq, Debug)
 pub(all) struct Decimal {
   negative : Bool
   coefficient : BigInt
   exponent : Int32
   kind : DecimalKind
-} derive(Eq, Debug)
+}
 
 ///|
 /// Build a finite triple. `coefficient` must be non-negative; the sign lives in

@@ -207,7 +207,8 @@ test "bfloat16: regression — truncating infinity must not produce a NaN" {
   )
   inspect(BFloat16::decode(of_f32_truncate(neg_inf)).sign, content="1")
   // Exactly-representable finite values must survive truncation untouched too.
-  let one = 1.0.to_float()
+  // `Double::to_float` was removed from core; 1.0f is exact either way.
+  let one : Float = 1.0
   inspect(of_f32_truncate(one), content="16256")
   inspect(BFloat16::decode(of_f32_truncate(one)).kind.label(), content="normal")
 }
@@ -245,8 +246,9 @@ test "bfloat16: binary32 subnormal rounds into bfloat16 zero, inexact" {
 
 ///|
 test "bfloat16: binary32 zero stays exact signed zero" {
-  inspect(of_f32(0.0.to_float(), NearestEven).bits.to_uint(), content="0")
-  inspect(of_f32(0.0.to_float(), NearestEven).inexact, content="false")
+  let zero : Float = 0.0
+  inspect(of_f32(zero, NearestEven).bits.to_uint(), content="0")
+  inspect(of_f32(zero, NearestEven).inexact, content="false")
   let nz = of_f32(Float::reinterpret_from_uint(0x80000000U), NearestEven)
   inspect(nz.bits.to_uint(), content="32768")
   inspect(nz.inexact, content="false")

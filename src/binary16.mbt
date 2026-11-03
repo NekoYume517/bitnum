@@ -30,6 +30,7 @@ pub let binary16_bias : Int32 = 15
 
 ///|
 /// The decoded view of one binary16 bit pattern.
+#derive(Eq, Debug)
 pub(all) struct Binary16 {
   /// Raw sign bit.
   sign : Int32
@@ -38,7 +39,7 @@ pub(all) struct Binary16 {
   /// Raw 10-bit significand field.
   significand : Int32
   kind : FloatClass
-} derive(Eq, Debug)
+}
 
 ///|
 /// Split one 16-bit pattern into its fields. Total on all 65536 inputs: the only
