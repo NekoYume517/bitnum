@@ -392,6 +392,25 @@ exit=1
 ```
 
 ```
+$ bitnum value decimal64 A2300000000003D
+bitnum: decimal64 is 16 hex digits, got 15
+exit=1
+```
+
+漏掉末位的 `A2300000000003D` 以前被右对齐成 `0A2300000000003D`，解成一个完全不同的数
+（`2.600000000000831E-247`）并退出 0。现在按 `from_hex` 的精确宽度要求拒绝
+（2026-11-04 审计 BN-2，P2）。注意措辞用的是 **hex 位数**，不是字节数：库的
+`TruncatedInput` 按字节计（`decode_bytes` 需要字节），CLI 在边界翻译成调用方看得懂的单位。
+
+```
+$ bitnum value binary16 3c0
+bitnum: hex input must have an even number of digits, got 3
+exit=1
+```
+
+二进制格式这条报错一直是对的 —— 审计就是拿它作对照，发现十进制侧宽松。
+
+```
 $ bitnum bits binary16 1e999
 7C00
 bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)

@@ -179,11 +179,9 @@ fn cmd_value(format_name : String, hex : String) -> Int32 raise {
         None => EXIT_DATA
       }
     DecimalFmt(f) => {
-      let raw = f.from_hex(hex) catch {
-        e => {
-          eprintln("bitnum: \{e.describe()}")
-          return EXIT_DATA
-        }
+      let raw = match parse_decimal_hex(f, hex) {
+        Some(r) => r
+        None => return EXIT_DATA
       }
       let text = @lib.describe_decimal(f, raw) catch {
         e => {
@@ -193,6 +191,28 @@ fn cmd_value(format_name : String, hex : String) -> Int32 raise {
       }
       println(text)
       EXIT_OK
+    }
+  }
+}
+
+///|
+/// Parse a decimal wire pattern, wording any length error in hex digits.
+///
+/// The library's `TruncatedInput` counts *bytes* (`decode_bytes` needs them), but
+/// this is the hex spelling of the same input, so a message saying "need 16
+/// bytes, got 15" for a 16-*character* string would name the wrong unit and
+/// invite the reader to look for a byte problem that is not there. Translating at
+/// the CLI boundary keeps the library's error honest for its own callers and the
+/// CLI's message honest for its users.
+fn parse_decimal_hex(f : @lib.DecimalFormat, hex : String) -> BigInt? {
+  Some(f.from_hex(hex)) catch {
+    TruncatedInput(needed, got) => {
+      eprintln("bitnum: \{f.name()} is \{needed} hex digits, got \{got}")
+      None
+    }
+    e => {
+      eprintln("bitnum: \{e.describe()}")
+      None
     }
   }
 }
@@ -637,11 +657,9 @@ fn cmd_check(format_name : String, hex : String) -> Int32 raise {
         None => EXIT_DATA
       }
     DecimalFmt(f) => {
-      let raw = f.from_hex(hex) catch {
-        e => {
-          eprintln("bitnum: \{e.describe()}")
-          return EXIT_DATA
-        }
+      let raw = match parse_decimal_hex(f, hex) {
+        Some(r) => r
+        None => return EXIT_DATA
       }
       let decoded = f.decode_raw(raw) catch {
         e => {

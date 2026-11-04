@@ -289,6 +289,93 @@ test "decimal wire: hex parsing rejects junk and over-wide input" {
 }
 
 ///|
+/// BN-2: a hex string of the wrong length is rejected, not right-aligned into
+/// the container.
+///
+/// The defect: `from_hex` only rejected input *wider* than the format, so
+/// `A2300000000003D` (15 characters, a dropped trailing digit) was parsed as
+/// `0A2300000000003D` and decoded as a completely different number, exit 0. The
+/// binary formats already refused this (`binary16` on 3 characters reports
+/// "hex input must have an even number of digits"), and `decode_bytes` already
+/// refuses a short buffer with `TruncatedInput`, so `from_hex` was the one path
+/// that guessed.
+///
+/// An exact width is required, not "pad with leading zeros": a wire pattern is a
+/// byte string, and a short one is a short byte string. Padding would make the
+/// typo above silently meaningful, which is the behaviour PLAN.md §1.2 forbids.
+test "decimal wire: hex of the wrong length is rejected, not zero-padded" {
+  let f64 : DecimalFormat = Decimal64
+  let width = f64.hex_width()
+  inspect(width, content="16")
+  // Short by one: the dropped-digit case from the audit.
+  let short = try {
+    let _ = f64.from_hex("A2300000000003D")
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "\{needed} vs \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(short, content="16 vs 15")
+  // Half a container is still wrong, even though it is a whole number of bytes.
+  let halved = try {
+    let _ = f64.from_hex("A2300000")
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "\{needed} vs \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(halved, content="16 vs 8")
+  // Empty input is not "zero" either.
+  let empty = try {
+    let _ = f64.from_hex("")
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "\{needed} vs \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(empty, content="16 vs 0")
+  // Longer is rejected on the same variant, with the same numbers.
+  let long = try {
+    let _ = f64.from_hex("A2300000000003D0A")
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "\{needed} vs \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(long, content="16 vs 17")
+  // The exact width still parses, and to the value the audit's typo was NOT.
+  let exact = f64.decode_raw(f64.from_hex("A2300000000003D0"))
+  inspect(exact.value.coefficient.to_string(), content="750")
+  inspect(exact.value.exponent, content="-2")
+  inspect(exact.value.negative, content="true")
+}
+
+///|
+/// Every format, because the width is per-format and a single-format test could
+/// pass while decimal128 stayed permissive.
+test "decimal wire: every format requires its own exact hex width" {
+  let formats : Array[DecimalFormat] = [Decimal32, Decimal64, Decimal128]
+  let widths : Array[Int32] = [8, 16, 32]
+  for i in 0..<formats.length() {
+    let f = formats[i]
+    inspect(f.hex_width(), content=widths[i].to_string())
+    // One character short must be rejected in each format.
+    let text = String::make(widths[i] - 1, '0')
+    let r = try {
+      let _ = f.from_hex(text)
+      "no error"
+    } catch {
+      TruncatedInput(needed, got) => "\{needed} vs \{got}"
+      _ => "wrong error variant"
+    }
+    inspect(r, content="\{widths[i]} vs \{widths[i] - 1}")
+    // The exact width of zeros is the zero pattern, and must parse.
+    let zero = f.from_hex(String::make(widths[i], '0'))
+    inspect(zero.compare_int(0), content="0")
+  }
+}
+
+///|
 test "decimal: raw input wider than the format is rejected, not truncated" {
   let f : DecimalFormat = Decimal32
   let too_wide = BigInt::from_int(1) << 32

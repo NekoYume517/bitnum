@@ -523,14 +523,25 @@ pub fn DecimalFormat::to_hex(self : DecimalFormat, raw : BigInt) -> String {
 }
 
 ///|
-/// Parse a hex string into wire bits. Rejects a string wider than the format and
-/// any non-hex character, rather than skipping or masking it.
+/// Parse a hex string into wire bits. Rejects any length other than the format's
+/// own, and any non-hex character, rather than skipping, masking, or padding it.
+///
+/// The length must be **exact**, not merely bounded above. A wire pattern is a
+/// byte string: `A2300000000003D` is `A2300000000003D0` with a digit missing, and
+/// right-aligning it into `0A2300000000003D` decodes a different number that
+/// happens to look plausible. `decode_bytes` already refuses a short buffer with
+/// `TruncatedInput`; this is the same rejection for the hex spelling of the same
+/// input, so the two entry points cannot disagree (PLAN.md §1.2).
+///
+/// The check is `!=` rather than `<`: a string wider than the format is the same
+/// class of error — it does not fit the container — and reporting both through
+/// `TruncatedInput(width, got)` keeps one wording for "the size is wrong".
 pub fn DecimalFormat::from_hex(
   self : DecimalFormat,
   text : String,
 ) -> BigInt raise BitnumError {
   let width = self.hex_width()
-  if text.length() > width {
+  if text.length() != width {
     raise TruncatedInput(width, text.length())
   }
   let upper = text.to_upper()

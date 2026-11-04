@@ -167,6 +167,59 @@ test "bits: bfloat16 hex and notes" {
 }
 
 ///|
+/// BN-2, at the CLI layer where the audit found it: `value`/`check` on a decimal
+/// format must reject a hex string of the wrong length with exit 1.
+///
+/// `A2300000000003D` is `A2300000000003D0` with its last digit dropped. Before
+/// the fix it was right-aligned into `0A2300000000003D`, decoded as a different
+/// number, and exited 0 — while `binary16` on a 3-character input already
+/// reported a length problem. The two containers now agree.
+test "value: a decimal hex string of the wrong length is a data error" {
+  inspect(
+    cmd_value("decimal64", "A2300000000003D") catch {
+      _ => -1
+    },
+    content="1",
+  )
+  inspect(cmd_value("decimal64", "A2300000") catch { _ => -1 }, content="1")
+  inspect(cmd_value("decimal64", "") catch { _ => -1 }, content="1")
+  inspect(cmd_value("decimal32", "A230000") catch { _ => -1 }, content="1")
+  inspect(
+    cmd_value("decimal128", "A2300000000003D0") catch {
+      _ => -1
+    },
+    content="1",
+  )
+  // The exact width keeps working, so the rejection did not overshoot.
+  inspect(
+    cmd_value("decimal64", "A2300000000003D0") catch {
+      _ => -1
+    },
+    content="0",
+  )
+}
+
+///|
+/// `check` shares `from_hex`, so it must reject the same inputs. Asserting it
+/// separately keeps a future refactor from fixing one call site and missing the
+/// other.
+test "check: a decimal hex string of the wrong length is a data error" {
+  inspect(
+    cmd_check("decimal64", "A2300000000003D") catch {
+      _ => -1
+    },
+    content="1",
+  )
+  inspect(cmd_check("decimal64", "A2300000") catch { _ => -1 }, content="1")
+  inspect(
+    cmd_check("decimal64", "A2300000000003D0") catch {
+      _ => -1
+    },
+    content="0",
+  )
+}
+
+///|
 /// The documented special spellings keep working — they are values, not syntax
 /// errors, and they must not be routed through the "too large" note.
 test "bits: the documented special spellings still convert exactly" {

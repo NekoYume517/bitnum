@@ -241,6 +241,23 @@ pub fn DecimalFormat::hex_width(Self) -> Int
 **`decode_raw` / `encode_raw` 的容器约定**：`raw` 是 BigInt，右对齐在低 `bits` 位。
 高出的位置被**拒绝**（`TruncatedInput`），不截断。一个约定服务三种格式，不用三份位运算。
 
+**`from_hex` 要求精确宽度**（BN-2/P2，修复自 2026-11-04 审计）：长度 ≠ `hex_width()`
+一律 `TruncatedInput(width, got)`，**不补前导零**。理由：十六进制串是字节串的拼写，
+短一个字符就是短一个字节。
+
+```
+A2300000000003D    (15 位，漏掉末位)  -> 拒绝，不解读为 0A2300000000003D
+A2300000000003D0   (16 位，正确)      -> 正常解析
+```
+
+修复前只拒「比格式宽」，于是漏一位的输入被右对齐成完全不同的数、退出 0 —— 而
+`decode_bytes` 对短 buffer 早就报 `TruncatedInput`，同一个错误形态在两个入口不一致。
+补零会让上面那个手误变成「有意义」，正是 PLAN.md §1.2 禁止的静默修正。
+
+CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex digits, got 15`。
+库的措辞按字节计（`decode_bytes` 需要字节），CLI 的按 hex 字符计 —— 在边界翻译，
+两边都不说错单位。
+
 **两个指数上限同时生效，取小者** —— 这是全项目最容易搞错的一处：
 
 | 上限 | 依据 | 效果 |
