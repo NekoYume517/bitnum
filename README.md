@@ -79,6 +79,28 @@ bitnum table decimal32
 bitnum check binary16 7E00
 ```
 
+`bits` 对读不出来的字面量**报错退出 1**，不会静默换成 `+0`；而超出 binary64 的字面量
+按 IEEE 754 §7.4 溢出到 ±Inf 并给出说明（退出码 0，标准对这种输入有确定答案）：
+
+```
+$ bitnum bits binary16 xyz
+bitnum: not a number: 'xyz'
+exit=1
+
+$ bitnum bits binary16 1e999
+7C00
+bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
+exit=0
+```
+
+`value` / `check` 的十六进制串必须**正好是该格式的宽度**，短一位就报错，不补前导零：
+
+```
+$ bitnum value decimal64 A2300000000003D
+bitnum: decimal64 is 16 hex digits, got 15
+exit=1
+```
+
 `value` 打印**字段分解**而不只是数值：
 
 ```
