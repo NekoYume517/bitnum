@@ -225,29 +225,8 @@ fn cmd_bits(format_name : String, text : String) -> Int32 raise {
     None => return EXIT_USAGE
   }
   match fmt {
-    Binary16Fmt => {
-      let x = parse_double_text(text)
-      let conv = @lib.of_f64(x, @lib.NearestEven) catch {
-        e => {
-          eprintln("bitnum: \{e.describe()}")
-          return EXIT_DATA
-        }
-      }
-      println(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)))
-      if conv.inexact {
-        eprintln("bitnum: note: rounded (inexact)")
-      }
-      EXIT_OK
-    }
-    Bfloat16Fmt => {
-      let x = parse_double_text(text)
-      let conv = @lib.of_f32(Float::from_double(x), @lib.NearestEven)
-      println(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)))
-      if conv.inexact {
-        eprintln("bitnum: note: rounded (inexact)")
-      }
-      EXIT_OK
-    }
+    Binary16Fmt => report_bits_outcome(binary16_bits(text))
+    Bfloat16Fmt => report_bits_outcome(bfloat16_bits(text))
     DecimalFmt(f) => {
       let value = @lib.parse_decimal(text) catch {
         e => {
@@ -268,14 +247,150 @@ fn cmd_bits(format_name : String, text : String) -> Int32 raise {
 }
 
 ///|
-/// Parse a decimal number for the binary formats. The IEEE spellings of the
-/// specials are accepted because probing them is the point of `bits`.
-fn parse_double_text(text : String) -> Double {
+/// What reading a `bits` literal produced.
+///
+/// Three outcomes, because they are three different things and folding them into
+/// one `Double` is exactly how BN-1 hid a rejected literal inside a valid `+0`:
+/// `LiteralOk` carries a value that will encode faithfully, `LiteralOverflow`
+/// carries the infinite value that IEEE 754 §7.4 asks round-to-nearest to
+/// produce, and `LiteralSyntaxError` carries nothing because there is nothing to
+/// convert.
+enum BitsLiteral {
+  LiteralOk(Double)
+  LiteralOverflow(Double)
+  LiteralSyntaxError
+}
+
+///|
+/// The result of `bits` for a binary format: either the hex to print plus the
+/// note to send to stderr, or the rejection wording. Keeping stdout and stderr
+/// separate here is what lets the note stay on stderr so a piped stdout is clean.
+enum BitsOutcome {
+  BitsHex(String, String)
+  BitsRejected(String)
+}
+
+///|
+/// Read a `bits` literal into one of the three outcomes.
+///
+/// `strconv.parse_double` raises for both a syntax error and a value outside
+/// binary64, so the two `Failure` messages are what tells them apart. That
+/// distinction is the whole point of BN-1: "1.2.3" is not a number and must be
+/// reported, while "1e999" is a number whose IEEE value is infinity and must be
+/// converted. Treating both as `+0` violated PLAN.md §1.2 (never silently
+/// correct a non-canonical input) in the first case and §1.3 (do not guess) in
+/// the second.
+fn read_double_literal(text : String) -> BitsLiteral {
   match text {
-    "nan" | "NaN" => @lib.quiet_nan_double()
-    "inf" | "Infinity" | "+Infinity" => @lib.infinity_double()
-    "-inf" | "-Infinity" => -@lib.infinity_double()
-    _ => parse_double_or_zero(text)
+    "nan" | "NaN" =>
+      // The IEEE spelling is accepted because probing the specials is the point
+      // of `bits`; it is a value, not a syntax error.
+      LiteralOk(@lib.quiet_nan_double())
+    "inf" | "Infinity" | "+Infinity" => LiteralOk(@lib.infinity_double())
+    "-inf" | "-Infinity" => LiteralOk(-@lib.infinity_double())
+    _ =>
+      LiteralOk(@strconv.parse_double(text[:])) catch {
+        Failure(msg) =>
+          // Core reports the two conditions with these two fixed messages.
+          if msg == "value out of range" {
+            LiteralOverflow(overflow_double_of_literal(text))
+          } else {
+            LiteralSyntaxError
+          }
+        _ => LiteralSyntaxError
+      }
+  }
+}
+
+///|
+/// The value round-to-nearest gives an out-of-range decimal literal: an infinity
+/// with the literal's own sign. The sign is read from the text (a leading `-`)
+/// rather than from a parsed value, because there is no parsed value to read.
+fn overflow_double_of_literal(text : String) -> Double {
+  let negative = text.length() > 0 && text.get_char(0).unwrap() == '-'
+  if negative {
+    -@lib.infinity_double()
+  } else {
+    @lib.infinity_double()
+  }
+}
+
+///|
+/// The note for a conversion. Never empty for an overflow: `7C00` alone would
+/// look like a faithful encoding of the number the user typed, so the wording
+/// says the input was too large and names it.
+fn bits_note(
+  conv : @lib.FloatConversion,
+  overflow : Bool,
+  text : String,
+) -> String {
+  if overflow {
+    "'\{text}' is too large for binary64; rounded to infinity (inexact)"
+  } else if conv.inexact {
+    "rounded (inexact)"
+  } else {
+    ""
+  }
+}
+
+///|
+/// Convert a literal to binary16 wire bytes.
+fn binary16_bits(text : String) -> BitsOutcome {
+  match read_double_literal(text) {
+    LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
+    LiteralOk(x) => binary16_convert(x, false, "")
+    LiteralOverflow(x) => binary16_convert(x, true, text)
+  }
+}
+
+///|
+fn binary16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
+  try {
+    let conv = @lib.of_f64(x, @lib.NearestEven)
+    BitsHex(
+      hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
+      bits_note(conv, overflow, text),
+    )
+  } catch {
+    e => BitsRejected("bitnum: \{e.describe()}")
+  }
+}
+
+///|
+/// Convert a literal to bfloat16 wire bytes.
+fn bfloat16_bits(text : String) -> BitsOutcome {
+  match read_double_literal(text) {
+    LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
+    LiteralOk(x) => bfloat16_convert(x, false, "")
+    LiteralOverflow(x) => bfloat16_convert(x, true, text)
+  }
+}
+
+///|
+fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
+  let conv = @lib.of_f32(Float::from_double(x), @lib.NearestEven)
+  BitsHex(
+    hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
+    bits_note(conv, overflow, text),
+  )
+}
+
+///|
+/// Print a `bits` outcome: the hex to stdout, the note to stderr, and the exit
+/// code from what actually happened.
+fn report_bits_outcome(outcome : BitsOutcome) -> Int32 raise {
+  match outcome {
+    BitsHex(hex, note) => {
+      println(hex)
+      if note != "" {
+        eprintln("bitnum: note: \{note}")
+      }
+      EXIT_OK
+    }
+    BitsRejected(reason) => {
+      eprintln(reason)
+      EXIT_DATA
+    }
   }
 }
 
@@ -572,27 +687,4 @@ fn report_bits_check(
     println("result: MISMATCH")
     EXIT_DATA
   }
-}
-
-///|
-/// Parse a Double, substituting zero on a syntax error.
-///
-/// The CLI deliberately has no separate "that is not a number" exit path for the
-/// binary formats: a bad literal is a usage error, and dispatch already handles
-/// argument-shape errors. Substituting zero keeps the conversion path total while
-/// the error stays visible as a wrong value rather than a crash — and every real
-/// value is still produced by of_f64/of_f32.
-fn parse_double_or_zero(text : String) -> Double {
-  let v : Double? = Some(parse_double_sv(text)) catch { _ => None }
-  match v {
-    Some(d) => d
-    None => 0.0
-  }
-}
-
-///|
-/// Bridge to core's StringView parser, which is a free function rather than a
-/// method on String.
-fn parse_double_sv(text : String) -> Double raise {
-  @strconv.parse_double(text[:])
 }

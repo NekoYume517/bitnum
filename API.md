@@ -319,5 +319,20 @@ bitnum check <format> <hexbytes>    # 往返校验
 `bits` 对二进制格式走**最近偶数舍入**，并在结果被舍入时向 stderr 打一条说明
 （stdout 保持干净，可管道）。十进制侧不舍入：`1.23` 精确编码成系数 123、指数 -2。
 
+**`bits` 的非法字面量必须报错**（BN-1/P1，修复自 2026-11-04 审计）：
+
+| 输入 | exit | stderr | 说明 |
+|---|---|---|---|
+| 语法错（`xyz`、`1.2.3`、`1e`、空串） | **1** | `bitnum: not a number: '<原文本>'` | 数据错误，与 `decimal` 分支口径一致；绝不静默换成 `+0`（PLAN.md §1.2） |
+| 溢出（`1e999`、`1e309`） | **0** | `bitnum: note: '<原文本>' is too large for binary64; rounded to infinity (inexact)` | IEEE 754 §7.4：就近舍入溢出到 ±Inf，故 stdout 给 `7C00`/`FC00`（bfloat16 是 `7F80`/`FF80`） |
+
+区分这两种是修复的核心：`strconv.parse_double` 对二者都 raise `Failure`，但
+`"value out of range"` 是**合法的数**、`"invalid syntax"` 是**不是数**。把两者一并折成
+`+0` 会同时违反 PLAN.md §1.2（静默修正）和 §1.3（不猜）。溢出值沿用原字面量的符号，
+从文本首字符读，因为此时没有已解析的值可读。
+
+`bits` 只接受 `nan` / `NaN` / `inf` / `Infinity` / `+Infinity` / `-inf` / `-Infinity`
+这几种特殊值拼写；它们是**值**，不走溢出说明。
+
 `check` 在非规范 DPD 输入上退出 1 —— 那是**合法但无规范形式**的输入，
 编码器的值域天然排除那 24 个码。它被单独说明，而不是折进"静默通过"。

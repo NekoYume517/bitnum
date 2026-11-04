@@ -6,6 +6,10 @@ package "NekoYume517/bitnum/cmd/bitnum"
 // Errors
 
 // Types and methods
+type BitsLiteral
+
+type BitsOutcome
+
 type FormatName
 
 // Type aliases

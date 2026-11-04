@@ -14,19 +14,19 @@
 
 ```
 $ moon check
-Finished. moon: ran 2 tasks, now up to date (0 warnings, 0 errors)
+Finished. moon: ran 4 tasks, now up to date (0 warnings, 0 errors)
 
 $ moon test
-Total tests: 55, passed: 55, failed: 0.
+Total tests: 63, passed: 63, failed: 0.
 
 $ moon build --target wasm
-Finished. moon: ran 6 tasks, now up to date
+Finished. moon: ran 2 tasks, now up to date
 
 $ moon fmt
-Finished. moon: ran 19 tasks, now up to date
+Finished. moon: ran 21 tasks, now up to date
 
 $ moon fmt --check
-Finished. moon: no work to do
+Finished. moon: ran 21 tasks, now up to date
 ```
 
 **`moon fmt --check` 必须先跑一次 `moon fmt`**，顺序不能反。`--check` 的实现是把源码
@@ -156,6 +156,60 @@ $ bitnum bits decimal128 1E-6176
 ```
 
 十进制侧不走舍入：`1.23` 精确编码成系数 123、指数 -2。三位数原样进容器。
+
+### 3.1 `bits` 对非法字面量的行为
+
+`bits` 的输入分三类，**两类都不能静默变成 `+0`**（2026-11-04 审计 BN-1，P1）。
+
+「不是数」是数据错误，退出码 1，与十进制分支同一口径：
+
+```
+$ bitnum bits binary16 xyz
+bitnum: not a number: 'xyz'
+exit=1
+```
+
+```
+$ bitnum bits binary16 1.2.3
+bitnum: not a number: '1.2.3'
+exit=1
+```
+
+```
+$ bitnum bits binary16 1e
+bitnum: not a number: '1e'
+exit=1
+```
+
+「是数但超出 binary64」按 IEEE 754 §7.4 就近舍入溢出到 ±Inf，于是编码成
+`7C00` / `FC00`，退出码 0 —— 标准对这种输入有确定答案，不该拒：
+
+```
+$ bitnum bits binary16 1e999
+7C00
+bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
+exit=0
+```
+
+```
+$ bitnum bits binary16 -1e999
+FC00
+bitnum: note: '-1e999' is too large for binary64; rounded to infinity (inexact)
+exit=0
+```
+
+符号跟着原字面量走。bfloat16 的容器更宽（指数域 8 位），同样输入落在 `7F80`：
+
+```
+$ bitnum bits bfloat16 1e999
+7F80
+bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
+exit=0
+```
+
+修复前这三类输入**一律**输出 `0000`、`exit 0`、无任何 stderr —— 一个拒绝的字面量
+伪装成一个合法的 `+0`。这两个状态在 hex 上无法区分，所以回归测试断言的是退出码与
+stderr 措辞，不是那 4 个 hex 字符（见 §7 的测试说明）。
 
 ## 4. `bitnum check` — 往返自检
 
@@ -331,16 +385,29 @@ bitnum: biased exponent 96 out of range [-101, 90]
 exit=1
 ```
 
+```
+$ bitnum bits binary16 xyz
+bitnum: not a number: 'xyz'
+exit=1
+```
+
+```
+$ bitnum bits binary16 1e999
+7C00
+bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
+exit=0
+```
+
 退出码：0 成功 / 1 数据错误 / 2 用法错误。
 
 ## 7. 全量测试
 
 ```
 $ moon test
-Total tests: 55, passed: 55, failed: 0.
+Total tests: 63, passed: 63, failed: 0.
 ```
 
-55 条测试的覆盖规模（不是"55 个断言"，是 55 条测试里有几条是穷举）：
+63 条测试的覆盖规模（不是"63 个断言"，是 63 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -352,4 +419,9 @@ Total tests: 55, passed: 55, failed: 0.
 | DPD 码空间 | 全部 **1024**（含 24 冗余） |
 | 十进制向量 | **568**（496 精确 + 72 冗余） |
 | 舍入模式 | 5 种 × 向量表 |
+| `bits` 非法字面量 | 9 条（语法错 6 + 溢出 4 + 分类 9 + 符号 2 + hex/note 8 + 措辞 2 + specials 3） |
+
+`bits` 那 9 条断言的是退出码、stdout/stderr 的分配、以及拒绝措辞里含原输入文本 ——
+不是 `0000` 这 4 个字符。修复前后 hex 可能相同（例如本来就该是 `+0` 的输入），
+只比 hex 的测试抓不到 BN-1。
 
