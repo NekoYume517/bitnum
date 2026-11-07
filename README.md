@@ -2,7 +2,7 @@
 
 **IEEE 754 数值交换格式的位级编解码器：binary16、bfloat16、decimal32/64/128（DPD）。**
 
-[![MoonBit](https://img.shields.io/badge/MoonBit-0.1.20261016-blueviolet)](https://www.moonbitlang.com/)
+[![MoonBit](https://img.shields.io/badge/MoonBit-0.1.20261102-blueviolet)](https://www.moonbitlang.com/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ---
