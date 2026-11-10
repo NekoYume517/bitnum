@@ -207,6 +207,22 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 exit=0
 ```
 
+bfloat16 还有**第二级**溢出，因为它要经过 `double → float → bf16` 两次窄化。
+`1e39` 是合法的 binary64、却是 f32 的无穷，而 f32 无穷转 bf16 无穷是**精确**的，
+所以编解码器的 `inexact` 看不见这一步。修复前它既不说明也不报错
+（BN-B4，修复自 2026-11-10 审计）：
+
+```
+$ bitnum bits bfloat16 1e39
+7F80
+bitnum: note: '1e39' is too large for binary32; rounded to infinity (inexact)
+exit=0
+```
+
+说明里写 `binary32` 而不是 `binary64`：越界的是第二级容器，binary64 那一档是好的。
+边界按第一次窄化的**实际结果**判定，不是按量级阈值 —— `3.4028235e38` 比
+`0x7F7FFFFF` 略大却仍被就近舍回它，阈值比较在那一点上会误报。
+
 修复前这三类输入**一律**输出 `0000`、`exit 0`、无任何 stderr —— 一个拒绝的字面量
 伪装成一个合法的 `+0`。这两个状态在 hex 上无法区分，所以回归测试断言的是退出码与
 stderr 措辞，不是那 4 个 hex 字符（见 §7 的测试说明）。

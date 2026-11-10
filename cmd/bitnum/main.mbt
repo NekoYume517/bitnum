@@ -378,21 +378,57 @@ fn binary16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
 
 ///|
 /// Convert a literal to bfloat16 wire bytes.
+///
+/// Unlike binary16, this conversion has **two** narrowing steps and the first one
+/// happens before the codec is reached: bfloat16 is the high half of a binary32, so
+/// the value must first survive `Double -> Float`. That step is invisible to
+/// `of_f32`'s `inexact` flag — an f32 infinity converts to a bfloat16 infinity
+/// *exactly* — so the overflow has to be diagnosed on the value the user wrote,
+/// which is what `binary32_overflow` does (BN-B4).
 fn bfloat16_bits(text : String) -> BitsOutcome {
   match read_double_literal(text) {
     LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
-    LiteralOk(x) => bfloat16_convert(x, false, "")
+    // `text` is passed through even on the non-overflow path because the binary32
+    // note names the literal, and which of the two overflows fired is not known
+    // until the value is inspected. `bits_note` ignores it when nothing overflowed.
+    LiteralOk(x) => bfloat16_convert(x, false, text)
     LiteralOverflow(x) => bfloat16_convert(x, true, text)
   }
 }
 
 ///|
 fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
-  let conv = @lib.of_f32(Float::from_double(x), @lib.NearestEven)
+  // The narrow first step is `Double -> Float`, and its overflow is invisible to
+  // `of_f32`: an f32 infinity converts to a bfloat16 infinity *exactly*, so the
+  // codec's `inexact` flag stays false. Diagnosing it must therefore look at what
+  // the narrowing actually produced, not at a threshold guess — round-to-nearest
+  // keeps values a little above binary32's max finite at that max finite, so a
+  // `mag > max` test would be both wrong at the boundary and need an exact
+  // 17-digit decimal constant.
+  let narrowed = Float::from_double(x)
+  if not(overflow) && narrowed.is_inf() && not(x.is_inf()) {
+    let bits = if x < 0.0 { 0xFF80 } else { 0x7F80 }
+    return BitsHex(
+      hex_of_bytes(word_to_bytes(bits.to_uint(), 2)),
+      binary32_overflow_note(text),
+    )
+  }
+  let conv = @lib.of_f32(narrowed, @lib.NearestEven)
   BitsHex(
     hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
     bits_note(conv, overflow, text),
   )
+}
+
+///|
+/// The note for a literal that is finite in binary64 but infinite in binary32.
+///
+/// Worded in the same family as the binary64 overflow note so a caller matching on
+/// "too large … infinity (inexact)" sees one pattern, and naming the limit that was
+/// actually crossed — `binary32`, not `binary64`, because the binary64 value was
+/// fine.
+fn binary32_overflow_note(text : String) -> String {
+  "'\{text}' is too large for binary32; rounded to infinity (inexact)"
 }
 
 ///|

@@ -362,11 +362,20 @@ bitnum check <format> <hexbytes>    # 往返校验
 |---|---|---|---|
 | 语法错（`xyz`、`1.2.3`、`1e`、空串） | **1** | `bitnum: not a number: '<原文本>'` | 数据错误，与 `decimal` 分支口径一致；绝不静默换成 `+0`（PLAN.md §1.2） |
 | 溢出（`1e999`、`1e309`） | **0** | `bitnum: note: '<原文本>' is too large for binary64; rounded to infinity (inexact)` | IEEE 754 §7.4：就近舍入溢出到 ±Inf，故 stdout 给 `7C00`/`FC00`（bfloat16 是 `7F80`/`FF80`） |
+| bfloat16 二级溢出（`1e39`、`3.5e38`） | **0** | `bitnum: note: '<原文本>' is too large for binary32; rounded to infinity (inexact)` | bfloat16 是 binary32 的高半，`Double → Float` 先溢出；那一步在 `of_f32` 的 `inexact` 之外（f32 无穷转 bf16 无穷是精确的），所以单独判定（BN-B4） |
 
 区分这两种是修复的核心：`strconv.parse_double` 对二者都 raise `Failure`，但
 `"value out of range"` 是**合法的数**、`"invalid syntax"` 是**不是数**。把两者一并折成
 `+0` 会同时违反 PLAN.md §1.2（静默修正）和 §1.3（不猜）。溢出值沿用原字面量的符号，
 从文本首字符读，因为此时没有已解析的值可读。
+
+**bfloat16 的说明有两种**（BN-B4，修复自 2026-11-10 审计）：它是唯一经过
+`double → float → bf16` 两次窄化的格式，而且第一次窄化的溢出对编解码器不可见 ——
+f32 的无穷转成 bf16 的无穷是**精确**的，`of_f32.inexact` 因此为 `false`。
+修复前 `1e39` 输出 `7F80`、stderr 空、exit 0，与 `1e999` 的完整说明不一致。
+现在按第一次窄化的**实际结果**判定（不是按量级阈值：就近舍入会把略高于
+`0x7F7FFFFF` 的值仍舍回它，阈值比较在那个点上是错的），说明中写
+`binary32` 而不是 `binary64`，因为越界的是第二级容器。`inf` / `nan` 不走这条说明。
 
 `bits` 只接受 `nan` / `NaN` / `inf` / `Infinity` / `+Infinity` / `-inf` / `-Infinity`
 这几种特殊值拼写；它们是**值**，不走溢出说明。
