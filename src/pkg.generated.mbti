@@ -100,6 +100,7 @@ pub(all) suberror BitnumError {
   CombinationInvalid(UInt32)
   CoefficientTooLarge(Int32, Int32)
   ExponentOutOfRange(Int32, Int32, Int32)
+  UnbiasedExponentOutOfRange(Int64, Int64, Int64)
   InexactConversion(String)
   TruncatedInput(Int32, Int32)
   NanPayloadTooLarge(Int32, Int32)
