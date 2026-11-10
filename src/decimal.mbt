@@ -257,7 +257,13 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   if digit_text.length() == 0 {
     raise InexactConversion("no digits in \{s}")
   }
-  let mut exponent = -frac_digits
+  // The exponent of the triple is one number, not two: `0.01e-99` means
+  // `(-2) + (-99)`. Both halves are accumulated in `Int64` because their sum can
+  // legitimately leave `Int32` — `0.01e-2147483647` wants `-2147483649` — and an
+  // `Int32` sum would wrap into a *plausible* exponent rather than an obviously
+  // broken one (BN-B3). The parse therefore never produces a wrapped exponent;
+  // it either fits or it is reported by value.
+  let mut exponent64 = Int64::from_int(-frac_digits)
   if i < n {
     let c = s.get_char(i).unwrap()
     if c != 'e' && c != 'E' {
@@ -291,11 +297,25 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     if etext.length() == 0 {
       raise InexactConversion("exponent with no digits: \{s}")
     }
-    let mag = digits_to_int(etext)
-    exponent = exponent + (if exp_negative { -mag } else { mag })
+    let mag = digits_to_int64(etext)
+    let signed = if exp_negative { -mag } else { mag }
+    // Both operands are within `Int32` (the scanner bound `mag` there), so their
+    // `Int64` sum cannot overflow `Int64` either. The check is therefore on the
+    // *result*, not on the addition: what "overflow" means here is "past the
+    // container `Decimal.exponent` can hold", which is the honest bound.
+    let total = exponent64 + signed
+    if total > 2147483647L || total < -2147483648L {
+      raise UnbiasedExponentOutOfRange(total, -2147483648L, 2147483647L)
+    }
+    exponent64 = total
   }
   let coefficient = BigInt::from_string(digit_text, radix=10)
-  Decimal::{ negative, coefficient, exponent, kind: DFinite, }
+  Decimal::{
+    negative,
+    coefficient,
+    exponent: exponent64.to_int(),
+    kind: DFinite,
+  }
 }
 
 ///|
@@ -336,25 +356,30 @@ fn strip_trailing_zeros(v : BigInt) -> BigInt {
 }
 
 ///|
-/// Convert an all-digit string to an Int.
+/// Convert an all-digit string to an `Int64` magnitude.
 ///
 /// Hand-rolled rather than delegating to a library parser: the exponent text is
 /// already known to be non-empty and all decimal digits (the scanner above rejects
-/// anything else), so the only remaining concern is overflow, and an explicit
-/// range check says what happened instead of surfacing a library-specific error.
-fn digits_to_int(text : String) -> Int32 raise BitnumError {
-  let mut acc = 0
+/// anything else), so the only remaining concern is magnitude, and an explicit
+/// bound says what happened instead of surfacing a library-specific error.
+///
+/// The bound is `Int64::max / 10`, not `Int32::max`, because the magnitude and the
+/// signed value have different ranges: `1e-2147483648` has an `Int32`-sized
+/// magnitude whose negation is exactly `Int32::min`, and that is a value the triple
+/// can hold. Only the *signed sum* is checked against `Int32`, so the scanner stays
+/// as permissive as the container and the single, honest rejection comes from the
+/// arithmetic the audit found broken (BN-B3).
+fn digits_to_int64(text : String) -> Int64 raise BitnumError {
+  // Int64::max / 10, so folding one more digit in cannot wrap.
+  let limit : Int64 = 922337203685477580L
+  let mut acc : Int64 = 0L
   for i in 0..<text.length() {
     let c = text.get_char(i).unwrap()
-    let d = c.to_int() - '0'.to_int()
-    // 2147483647 // 10 == 214748364, so a larger accumulator would overflow.
-    if acc > 214748364 {
-      raise InexactConversion("exponent does not fit in an Int: \{text}")
+    let d = Int64::from_int(c.to_int() - '0'.to_int())
+    if acc > limit {
+      raise UnbiasedExponentOutOfRange(acc, 0L, 2147483647L)
     }
-    acc = acc * 10 + d
-    if acc < 0 {
-      raise InexactConversion("exponent does not fit in an Int: \{text}")
-    }
+    acc = acc * 10L + d
   }
   acc
 }

@@ -357,7 +357,11 @@ pub fn DecimalFormat::encode_raw(
       sign_bit + (BigInt::from_int(0x1F) << comb_shift) + signal_bit + payload
     }
     DFinite => {
-      let biased = value.exponent + self.bias()
+      // `exponent + bias` is computed in `Int64`: a legal `Int32` exponent can
+      // still push the biased value past `Int32` (`1e2147483647` wants
+      // 2147483748), and wrapping there would report a plausible but unrelated
+      // number (BN-B3).
+      let biased = value.exponent.to_int64() + self.bias().to_int64()
       self.check_biased(biased)
       // A datum's maximum exponent depends on its digit count, and zero is no
       // exception (it counts as one digit). Without this check `exp_top` can reach
@@ -380,8 +384,8 @@ pub fn DecimalFormat::encode_raw(
           exp_limit.to_int64(),
         )
       }
-      let exp_top = biased >> self.exp_cont_bits()
-      let exp_low = biased & ((1 << self.exp_cont_bits()) - 1)
+      let exp_top = (biased >> self.exp_cont_bits()).to_int()
+      let exp_low = (biased & ((1L << self.exp_cont_bits()) - 1L)).to_int()
       let exp_field = BigInt::from_int(exp_low) << self.coef_cont_bits()
       if value.coefficient.is_zero() {
         // Zero's leading digit is 0, so the combination is `exp_top << 3` — legal
@@ -468,13 +472,18 @@ fn digit_at(text : String, i : Int32) -> Int32 {
 ///|
 /// Reject a biased exponent outside the representable range, naming the value and
 /// both bounds (PLAN.md §5).
+///
+/// `biased` arrives as `Int64` because the caller's sum can leave `Int32`; the
+/// bounds are tight and positive, so `Int64` costs nothing here and buys the
+/// difference between reporting `2147483748` and reporting a wrapped
+/// `-2147483548` (BN-B3).
 fn DecimalFormat::check_biased(
   self : DecimalFormat,
-  biased : Int32,
+  biased : Int64,
 ) -> Unit raise BitnumError {
-  let max = self.biased_exponent_max()
-  if biased < 0 || biased > max {
-    raise ExponentOutOfRange(biased, 0, max)
+  let max = self.biased_exponent_max().to_int64()
+  if biased < 0L || biased > max {
+    raise ExponentOutOfRange(biased, 0L, max)
   }
 }
 

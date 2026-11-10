@@ -17,7 +17,13 @@ pub(all) suberror BitnumError {
   /// `digits` decimal digits wanted, `capacity` available in this format.
   CoefficientTooLarge(Int32, Int32)
   /// `value`, `min`, `max` of the biased exponent slot for this format.
-  ExponentOutOfRange(Int32, Int32, Int32)
+  ///
+  /// `Int64` for the same reason as `UnbiasedExponentOutOfRange`: the biased value
+  /// is `exponent + bias`, and an exponent that is a legal `Int32` can still make
+  /// that sum leave `Int32` — `1e2147483647` wants a biased `2147483748`. Reporting
+  /// the wrapped `-2147483548` instead describes a number the caller never wrote
+  /// (BN-B3).
+  ExponentOutOfRange(Int64, Int64, Int64)
   /// `value`, `min`, `max` of a **true** (unbiased) exponent that the format
   /// cannot carry. Separate from `ExponentOutOfRange` on purpose: the two checks
   /// ask different questions — one bounds the biased field, the other bounds the
