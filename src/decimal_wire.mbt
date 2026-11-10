@@ -372,7 +372,13 @@ pub fn DecimalFormat::encode_raw(
       let nd = if digits_text.length() == 0 { 1 } else { digits_text.length() }
       let exp_limit = self.max_exponent_for(value.coefficient)
       if value.exponent > exp_limit {
-        raise ExponentOutOfRange(value.exponent, self.etin_y(), exp_limit)
+        // The value being reported is the *true* exponent and the bounds are true
+        // exponents too, so this must not reuse the biased wording (BN-B5).
+        raise UnbiasedExponentOutOfRange(
+          value.exponent.to_int64(),
+          self.etin_y().to_int64(),
+          exp_limit.to_int64(),
+        )
       }
       let exp_top = biased >> self.exp_cont_bits()
       let exp_low = biased & ((1 << self.exp_cont_bits()) - 1)

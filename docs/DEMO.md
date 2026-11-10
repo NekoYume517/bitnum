@@ -398,9 +398,22 @@ exit=1
 
 ```
 $ bitnum bits decimal32 9999999E+96
-bitnum: biased exponent 96 out of range [-101, 90]
+bitnum: exponent 96 out of range [-101, 90]
 exit=1
 ```
+
+这里的 `96` 是**真指数**（`9.999999E+102` 超过 `Emax=96`），上下界也是真指数，
+所以说 `exponent`。另一条检查守的是**偏置指数域**，措辞不同：
+
+```
+$ bitnum bits decimal32 1e97
+bitnum: biased exponent 198 out of range [0, 197]
+exit=1
+```
+
+两条分支原先共用一句 `biased exponent …`，于是上面第二条把真指数 96 印成
+`biased exponent 96 out of range [-101, 90]` —— 一个不是偏置指数的数配一组真指数
+的界（BN-B5，修复自 2026-11-10 审计）。现在各自说清在检查哪个量。
 
 ```
 $ bitnum bits binary16 xyz

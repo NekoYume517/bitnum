@@ -226,7 +226,10 @@ test "decimal wire: exponent outside the biased range is rejected with bounds" {
     })
     "no error"
   } catch {
-    ExponentOutOfRange(value, min, max) => "\{value} in [\{min}, \{max}]"
+    // A *true* exponent above `Emax_top`: its own variant, so the message can say
+    // "exponent" rather than "biased exponent" (BN-B5).
+    UnbiasedExponentOutOfRange(value, min, max) =>
+      "\{value} in [\{min}, \{max}]"
     _ => "wrong error variant"
   }
   inspect(too_high, content="96 in [-101, 90]")
@@ -240,7 +243,8 @@ test "decimal wire: exponent outside the biased range is rejected with bounds" {
     })
     "no error"
   } catch {
-    ExponentOutOfRange(value, min, max) => "\{value} in [\{min}, \{max}]"
+    UnbiasedExponentOutOfRange(value, min, max) =>
+      "\{value} in [\{min}, \{max}]"
     _ => "wrong error variant"
   }
   inspect(narrow, content="96 in [-101, 90]")

@@ -18,6 +18,19 @@ pub(all) suberror BitnumError {
   CoefficientTooLarge(Int32, Int32)
   /// `value`, `min`, `max` of the biased exponent slot for this format.
   ExponentOutOfRange(Int32, Int32, Int32)
+  /// `value`, `min`, `max` of a **true** (unbiased) exponent that the format
+  /// cannot carry. Separate from `ExponentOutOfRange` on purpose: the two checks
+  /// ask different questions — one bounds the biased field, the other bounds the
+  /// mathematical exponent — and sharing one wording made the message
+  /// self-contradictory (`biased exponent 96 out of range [-101, 90]`, where 96 is
+  /// a true exponent and the bounds are true exponents).
+  ///
+  /// The fields are `Int64` because the value this reports can legitimately exceed
+  /// `Int32`: `parse_decimal` sums a fractional-digit count with an explicit
+  /// exponent, and `0.01e-2147483647` wants `-2147483649`. Narrowing the report
+  /// back to `Int32` would wrap it into a different, plausible number — exactly
+  /// the defect this variant exists to report (BN-B3).
+  UnbiasedExponentOutOfRange(Int64, Int64, Int64)
   /// Source and target of a conversion that cannot be represented.
   InexactConversion(String)
   /// `needed` bytes required, `got` bytes supplied.
@@ -42,6 +55,8 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
       "coefficient has \{digits} decimal digits, this format holds \{capacity}"
     ExponentOutOfRange(value, min, max) =>
       "biased exponent \{value} out of range [\{min}, \{max}]"
+    UnbiasedExponentOutOfRange(value, min, max) =>
+      "exponent \{value} out of range [\{min}, \{max}]"
     InexactConversion(what) => "cannot represent \{what} exactly"
     TruncatedInput(needed, got) => "need \{needed} bytes, got \{got}"
     NanPayloadTooLarge(width, capacity) =>

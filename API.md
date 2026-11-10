@@ -313,7 +313,8 @@ pub(all) suberror BitnumError {
   DpdRedundantCodeAccepted(UInt, String)    // 哪个码、解成什么
   CombinationInvalid(UInt)
   CoefficientTooLarge(Int, Int)             // 位数, 容器可容位数
-  ExponentOutOfRange(Int, Int, Int)         // 值, min, max
+  ExponentOutOfRange(Int, Int, Int)         // 偏置指数域：值, min, max
+  UnbiasedExponentOutOfRange(Int64, Int64, Int64)  // 真指数：值, min, max
   InexactConversion(String)                 // 源→目标描述
   TruncatedInput(Int, Int)                  // 需要, 实际
   NanPayloadTooLarge(Int, Int)              // payload 位宽, 容器容量
@@ -326,6 +327,19 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
 `DpdDigitGroupMisaligned` 是对 PLAN.md §5 的追加，与 copybook 的
 `RecordRemainder` 同类 —— 属于补充而非签名变更。
+
+**两个指数变体不是重复**（BN-B5，修复自 2026-11-10 审计）。编码器守两道独立的门：
+
+| 变体 | 检查的是什么 | 措辞 |
+|---|---|---|
+| `ExponentOutOfRange` | **偏置**指数域 `[0, Emax+bias]` | `biased exponent 198 out of range [0, 197]` |
+| `UnbiasedExponentOutOfRange` | **真**指数 `[Etiny, Emax_top]`（按位数收紧） | `exponent 96 out of range [-101, 90]` |
+
+共用一句 `biased exponent …` 会让第二道门印出 `biased exponent 96 out of range
+[-101, 90]` —— 一个不是偏置指数的数，配一组真指数的界，读者无法判断到底哪个量越界。
+`UnbiasedExponentOutOfRange` 的字段是 `Int64`：`parse_decimal` 的代数和可以合法超出
+`Int32`（`0.01e-2147483647` 要的是 `-2147483649`），把报告窄化回 `Int32` 会把真指数
+回绕成另一个看起来正常的数（BN-B3）。
 
 ## 9. CLI `cmd/bitnum/main.mbt`
 

@@ -10,6 +10,8 @@ type BitsLiteral
 
 type BitsOutcome
 
+type CheckVerdict
+
 type FormatName
 
 // Type aliases
