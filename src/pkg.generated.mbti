@@ -102,6 +102,7 @@ pub(all) suberror BitnumError {
   ExponentOutOfRange(Int64, Int64, Int64)
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)
   InexactConversion(String)
+  UnparsableInput(String, String)
   TruncatedInput(Int32, Int32)
   NanPayloadTooLarge(Int32, Int32)
   DpdDigitGroupMisaligned(Int32)
