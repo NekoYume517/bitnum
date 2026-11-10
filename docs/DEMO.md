@@ -394,6 +394,36 @@ bitnum: non-hex character in 'ZZZZ'
 exit=1
 ```
 
+十进制 `bits` 的词法拒绝是**另一句话**：它不经过「不能精确表示」的外壳，因为
+根本没有值被舍入（BN-B9，修复自 2026-11-10 审计）。修复前这些全是
+`cannot represent no digits in nan exactly` 这类病句：
+
+```
+$ bitnum bits decimal64 nan
+bitnum: cannot parse 'nan': no digits
+exit=1
+```
+
+```
+$ bitnum bits decimal64 1.2.3
+bitnum: cannot parse '1.2.3': more than one decimal point
+exit=1
+```
+
+```
+$ bitnum bits decimal64 +
+bitnum: cannot parse '+': sign with no digits
+exit=1
+```
+
+`from_hex` 的非 hex 字符走同一个变体：
+
+```
+$ bitnum value decimal32 78ZZ0000
+bitnum: cannot parse '78ZZ0000': non-hex character
+exit=1
+```
+
 ```
 $ bitnum value nosuch 0000
 bitnum: unknown format 'nosuch' (expected binary16, bfloat16, decimal32, decimal64, decimal128)

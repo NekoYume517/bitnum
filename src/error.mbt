@@ -37,8 +37,19 @@ pub(all) suberror BitnumError {
   /// back to `Int32` would wrap it into a different, plausible number — exactly
   /// the defect this variant exists to report (BN-B3).
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)
-  /// Source and target of a conversion that cannot be represented.
+  /// Source and target of a conversion that cannot be represented exactly — a
+  /// *semantic* rejection: the input was understood, and the container is too small.
   InexactConversion(String)
+  /// Text that no parser in this package can read at all: a decimal literal the
+  /// grammar refuses, or a hex string with a non-hex character.
+  ///
+  /// Kept apart from `InexactConversion` because the two say different things and a
+  /// shared prefix made both wrong (BN-B9). `nan` is not a number that got rounded;
+  /// it is text the parser refused, and "cannot represent no digits in nan exactly"
+  /// describes neither. The fields are the offending text and *why* it was refused,
+  /// so `describe()` owns the whole sentence and no fragment has to be a
+  /// grammatical part of one.
+  UnparsableInput(String, String)
   /// `needed` bytes required, `got` bytes supplied.
   TruncatedInput(Int32, Int32)
   /// Payload width `width` requested, container holds `capacity`.
@@ -64,6 +75,7 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
     UnbiasedExponentOutOfRange(value, min, max) =>
       "exponent \{value} out of range [\{min}, \{max}]"
     InexactConversion(what) => "cannot represent \{what} exactly"
+    UnparsableInput(text, why) => "cannot parse '\{text}': \{why}"
     TruncatedInput(needed, got) => "need \{needed} bytes, got \{got}"
     NanPayloadTooLarge(width, capacity) =>
       "NaN payload needs \{width} bits, container holds \{capacity}"

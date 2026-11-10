@@ -568,7 +568,7 @@ pub fn DecimalFormat::from_hex(
     } else if c >= 'A' && c <= 'F' {
       c.to_int() - 'A'.to_int() + 10
     } else {
-      raise InexactConversion("non-hex character in \{text}")
+      raise UnparsableInput(text, "non-hex character")
     }
     acc = (acc << 4) + BigInt::from_int(d)
   }

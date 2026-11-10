@@ -219,7 +219,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   let s = text.to_owned()
   let n = s.length()
   if n == 0 {
-    raise InexactConversion("empty string is not a number")
+    raise UnparsableInput(s, "empty input")
   }
   let mut i = 0
   let mut negative = false
@@ -231,7 +231,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     i = 1
   }
   if i >= n {
-    raise InexactConversion("sign with no digits: \{s}")
+    raise UnparsableInput(s, "sign with no digits")
   }
   let dsb = StringBuilder()
   let mut seen_point = false
@@ -240,7 +240,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     let c = s.get_char(i).unwrap()
     if c == '.' {
       if seen_point {
-        raise InexactConversion("more than one decimal point: \{s}")
+        raise UnparsableInput(s, "more than one decimal point")
       }
       seen_point = true
     } else if c >= '0' && c <= '9' {
@@ -255,7 +255,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   }
   let digit_text = dsb.to_string()
   if digit_text.length() == 0 {
-    raise InexactConversion("no digits in \{s}")
+    raise UnparsableInput(s, "no digits")
   }
   // The exponent of the triple is one number, not two: `0.01e-99` means
   // `(-2) + (-99)`. Both halves are accumulated in `Int64` because their sum can
@@ -267,7 +267,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   if i < n {
     let c = s.get_char(i).unwrap()
     if c != 'e' && c != 'E' {
-      raise InexactConversion("junk after number: \{s}")
+      raise UnparsableInput(s, "junk after the number")
     }
     i = i + 1
     let mut exp_negative = false
@@ -281,7 +281,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
       }
     }
     if i >= n {
-      raise InexactConversion("exponent sign with no digits: \{s}")
+      raise UnparsableInput(s, "exponent sign with no digits")
     }
     let esb = StringBuilder()
     while i < n {
@@ -290,12 +290,12 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
         esb.write_char(dc)
         i = i + 1
       } else {
-        raise InexactConversion("junk after exponent: \{s}")
+        raise UnparsableInput(s, "junk after the exponent")
       }
     }
     let etext = esb.to_string()
     if etext.length() == 0 {
-      raise InexactConversion("exponent with no digits: \{s}")
+      raise UnparsableInput(s, "exponent with no digits")
     }
     let mag = digits_to_int64(etext)
     let signed = if exp_negative { -mag } else { mag }

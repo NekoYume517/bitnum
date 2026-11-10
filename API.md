@@ -315,7 +315,8 @@ pub(all) suberror BitnumError {
   CoefficientTooLarge(Int, Int)             // 位数, 容器可容位数
   ExponentOutOfRange(Int, Int, Int)         // 偏置指数域：值, min, max
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)  // 真指数：值, min, max
-  InexactConversion(String)                 // 源→目标描述
+  InexactConversion(String)                 // 语义类：源→目标描述
+  UnparsableInput(String, String)           // 词法类：原文本, 拒绝原因
   TruncatedInput(Int, Int)                  // 需要, 实际
   NanPayloadTooLarge(Int, Int)              // payload 位宽, 容器容量
   DpdDigitGroupMisaligned(Int)              // 分组长度不是 3 的倍数
@@ -340,6 +341,19 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 `UnbiasedExponentOutOfRange` 的字段是 `Int64`：`parse_decimal` 的代数和可以合法超出
 `Int32`（`0.01e-2147483647` 要的是 `-2147483649`），把报告窄化回 `Int32` 会把真指数
 回绕成另一个看起来正常的数（BN-B3）。
+
+**词法拒绝与语义拒绝是两句话**（BN-B9，修复自 2026-11-10 审计）：
+
+| 变体 | 用在 | 措辞 |
+|---|---|---|
+| `UnparsableInput` | 语法读不出来的文本（`nan`、`1.2.3`、`+`）与非 hex 字符 | `cannot parse '1.2.3': more than one decimal point` |
+| `InexactConversion` | 值看得懂、容器装不下（负系数等） | `cannot represent … exactly` |
+
+两者原先共用 `cannot represent … exactly` 外壳，于是语法错误被说成「没能精确表示」，
+得到 `cannot represent no digits in nan exactly`、`cannot represent more than one
+decimal point: 1.2.3 exactly` 这类既不成立也读不通的句子。`UnparsableInput` 的第二个
+字段是拒绝原因（`no digits` / `sign with no digits` / …），整句由 `describe()` 组织，
+所以没有任何片段需要充当某个句子的语法成分。
 
 ## 9. CLI `cmd/bitnum/main.mbt`
 
