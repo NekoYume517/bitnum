@@ -80,10 +80,10 @@ test "examples/vectors-binary16.tsv: every binary16 row matches" {
       }
     }
   }
-  // 805 binary16 rows out of 965: 32 curated cases x 5 modes, plus 200 random
-  // nearest-even rows, plus 5 modes on the remaining cases. The count is
-  // asserted so a generator that silently drops rows cannot pass unnoticed.
-  inspect(checked, content="805")
+  // 830 binary16 rows out of 990: 37 curated cases x 5 modes, plus 200 random
+  // nearest-even rows. The count is asserted so a generator that silently drops
+  // rows cannot pass unnoticed.
+  inspect(checked, content="830")
   inspect(mismatches.length(), content="0")
   for m in mismatches {
     println(m)

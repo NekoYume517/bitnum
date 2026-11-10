@@ -92,18 +92,33 @@ binary16 次正规区的量子是 `q = -24`。当输入是 **binary64 的次正�
 pattern <bits> kind=... val=<v> back=<错误位模式>
 ```
 
-修法不是加大位宽，是显式处理那一段：
+修法不是加大位宽，是显式处理那一段 —— 但**不能一律返回零**。
+`m * 2^e` 确实小于 `2^q`，所以商是 0、也没有平局可断；可「落到哪个零」是
+舍入模式的决定，不是这段守卫的决定。2026-11-10 审计 BN-B1 在这里又发现一层：
+第一版无条件返回 `(0UL, …)`，于是 `TowardPositive` 遇到正的 `2^-36` 给出
+`0x0000` 而不是 IEEE 754-2008 §4.3.3 要求的 `0x0001`（最小次正规数），
+`TowardNegative` 遇到负值同理给 `0x8000` 而不是 `0x8001`。
+
+正确形式是让模式参与：
 
 ```moonbit
 if shift >= 64 {
-    // |m * 2^e| < 2^q 对任何 binary64 尾数都成立，所以计数是 0，舍入也不可能进位；
-    // 但值本身不为零，故 inexact。
-    return (0UL, m != 0UL)
+    if m == 0UL { return (0UL, false) }
+    let away = match mode {
+        TowardPositive => not(neg)
+        TowardNegative => neg
+        _ => false
+    }
+    return (if away { 1UL } else { 0UL }, true)
 }
 ```
 
-这不是防御性补丁：`of_f64` 真的会走到这里，回归测试 `5.0 * 2^-1074` 在五种模式下
-都断言结果为 0、`inexact == true`，负值在定向模式下断言为 `-0`（位模式 32768）。
+这不是防御性补丁：`of_f64` 真的会走到这里，回归测试在 `2^-35` / `2^-36` /
+`5.0 × 2^-1074` 三档上逐一断言 —— 向内三种模式（`NearestEven` / `NearestAway` /
+`TowardZero`）给带符号的零，向外两种（`TowardPositive` 对正值、
+`TowardNegative` 对负值）给到该符号的最小次正规数，五种模式的 `inexact` 全部为
+`true`。分界之所以锐利，是因为它就是 `shift == 64`：`2^-35` 仍走 64 位移位路径，
+`2^-36` 不走，所以两侧都被钉住。
 
 ## 3. bfloat16 截断把 +Infinity 变成 NaN
 

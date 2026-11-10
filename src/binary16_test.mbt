@@ -175,28 +175,66 @@ test "binary16: NaN through f64 collapses to the canonical quiet NaN" {
 test "binary16: f64 subnormal input underflows, it does not shift wrongly" {
   // A binary64 subnormal has e = -1074, so the rounding shift is 1050 bits —
   // far beyond a 64-bit word. Before the guard in `round_to_quantum` this
-  // produced a nonsense count instead of zero. Values below 2^-25 must round to
-  // zero and be flagged inexact.
+  // produced a nonsense count instead of zero. Every mode reports inexact; where
+  // the count lands is decided by the mode (BN-B1: the nearest modes and
+  // `TowardZero` go to the signed zero, the outward directed modes go to the
+  // smallest subnormal of that sign).
   let tiny = 5.0 * pow2_exact(-1074)
-  let modes : Array[RoundingMode] = [
-    NearestEven,
-    NearestAway,
-    TowardZero,
-    TowardPositive,
-    TowardNegative,
-  ]
-  for mode in modes {
+  let inward : Array[RoundingMode] = [NearestEven, NearestAway, TowardZero]
+  for mode in inward {
     let c = of_f64(tiny, mode)
     inspect(c.bits, content="0")
     inspect(c.inexact, content="true")
   }
+  // TowardPositive on a positive value is outward: one ulp, never zero.
+  inspect(of_f64(tiny, TowardPositive).bits, content="1")
+  inspect(of_f64(tiny, TowardPositive).inexact, content="true")
+  // TowardNegative on a positive value is inward.
+  inspect(of_f64(tiny, TowardNegative).bits, content="0")
   // And a negative one, where the directed modes must flip toward -0.
   let neg_tiny = -5.0 * pow2_exact(-1074)
   let cp = of_f64(neg_tiny, TowardNegative)
-  inspect(cp.bits, content="32768")
+  inspect(cp.bits, content="32769")
   inspect(cp.inexact, content="true")
   let cz = of_f64(neg_tiny, TowardZero)
   inspect(cz.bits, content="32768")
+  inspect(of_f64(neg_tiny, TowardPositive).bits, content="32768")
+}
+
+///|
+/// BN-B1: the deep-underflow region — everything with |x| < 2^-35, which includes
+/// every binary64 subnormal — has a rounding shift of 64 bits or more, and the
+/// guard for that region used to return zero units regardless of the mode. IEEE
+/// 754-2008 §4.3.3 is unambiguous: a nonzero value rounded *outward* is the
+/// smallest subnormal of that sign, so `TowardPositive` on a positive value (and
+/// `TowardNegative` on a negative one) must produce `0x0001` / `0x8001`, not a
+/// signed zero.
+///
+/// The boundary is sharp because it is `shift == 64`: `2^-35` still fits the
+/// 64-bit path and was always right, `2^-36` does not. Both sides are asserted so
+/// a future change to the guard cannot move the seam unnoticed.
+test "binary16: deep underflow rounds away from zero under the directed modes" {
+  // 2^-35 is the last input the 64-bit-shift path handles: it is exact-zero
+  // everything but directed-outward, and it was already correct.
+  inspect(of_f64(pow2_exact(-35), TowardPositive).bits, content="1")
+  inspect(of_f64(-pow2_exact(-35), TowardNegative).bits, content="32769")
+  // 2^-36 crosses into shift >= 64 and is the audit's reproduction.
+  inspect(of_f64(pow2_exact(-36), TowardPositive).bits, content="1")
+  inspect(of_f64(-pow2_exact(-36), TowardNegative).bits, content="32769")
+  // The inward side of the same inputs stays at the signed zero.
+  inspect(of_f64(pow2_exact(-36), TowardNegative).bits, content="0")
+  inspect(of_f64(-pow2_exact(-36), TowardPositive).bits, content="32768")
+  inspect(of_f64(pow2_exact(-36), NearestEven).bits, content="0")
+  inspect(of_f64(pow2_exact(-36), NearestAway).bits, content="0")
+  inspect(of_f64(pow2_exact(-36), TowardZero).bits, content="0")
+  // And the smallest binary64 subnormal, the deepest input that exists at all.
+  let deep = 5.0 * pow2_exact(-1074)
+  inspect(of_f64(deep, TowardPositive).bits, content="1")
+  inspect(of_f64(-deep, TowardNegative).bits, content="32769")
+  // The outward result is flagged inexact in every direction: the value really
+  // was not representable, and the flag says so rather than describing the
+  // chosen direction.
+  inspect(of_f64(pow2_exact(-36), TowardPositive).inexact, content="true")
 }
 
 ///|

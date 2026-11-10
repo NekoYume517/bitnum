@@ -232,6 +232,18 @@ def binary16_cases():
     add("below-min-normal", next_down(2.0 ** -14))
     add("just-below-min-normal", 2.0 ** -14 - 2.0 ** -25)
 
+    # Deep underflow: everything with |x| < 2^-35 needs a rounding shift of 64
+    # bits or more, which is a separate code path in both implementations (BN-B1).
+    # The seam is exactly at 2^-35 / 2^-36, so both sides are pinned, and the
+    # directed modes are the point: an outward rounding of a nonzero value is the
+    # smallest subnormal, an inward one is the signed zero (IEEE 754-2008 §4.3.3).
+    add("deep-underflow-2^-35", 2.0 ** -35)
+    add("deep-underflow-2^-36", 2.0 ** -36)
+    add("neg-deep-underflow-2^-36", -(2.0 ** -36))
+    # The smallest binary64 subnormal times five: the deepest input that exists.
+    add("f64-subnormal-5*2^-1074", 5 * 2.0 ** -1074)
+    add("neg-f64-subnormal-5*2^-1074", -(5 * 2.0 ** -1074))
+
     # Ties in the normal region: midpoint between two adjacent binary16 values.
     for p in range(-14, 16):
         quantum = 2.0 ** (p - 10)

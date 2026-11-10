@@ -95,6 +95,12 @@ pub fn Binary16::nan_payload(Binary16) -> Int
 `of_f64` 的溢出规则（PLAN.md §2）：就近模式 → ±Inf；`TowardZero` → ±max。
 `Towards...` 定向模式只有在方向指向远离零时才溢出到 Inf。
 
+**下溢端对称（BN-B1，修复自 2026-11-10 审计）**：`|x| < 2^-35` 时（含**全部**
+binary64 次正规数）舍入位移 ≥ 64 位，四种向内的情形落带符号的零，
+`TowardPositive` 遇到正值、`TowardNegative` 遇到负值则落到**该符号的最小次正规数**
+`0x0001` / `0x8001`（IEEE 754-2008 §4.3.3：非同值向外舍入即最小次正规数）。
+五种模式一律标 `inexact`。分界正好在 `2^-35` / `2^-36` 之间，向量表两侧都钉住。
+
 **NaN 的不对称（有测试锁定，不是遗漏）**：`decode → encode` 保留 10 位 payload；
 `decode → to_f64 → of_f64` 不能，binary64 的 52 位 payload 塞不进 10 位，所以
 `of_f64` 按 PLAN.md §2 产出规范安静 NaN `0x7E00`（保留符号）并标 `inexact`。

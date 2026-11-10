@@ -250,11 +250,26 @@ fn round_to_quantum(
     return (m << -shift, false)
   }
   if shift >= 64 {
-    // |m * 2^e| < 2^q for every significand a binary64 can hold, so the count is
-    // zero and the rounding cannot carry — but the value is not zero, hence
-    // inexact. Guarding here is not defensive padding: `of_f64` reaches this
-    // with a binary64 *subnormal* input, where `e == -1074` and `shift` is 1050.
-    return (0UL, m != 0UL)
+    // |m * 2^e| < 2^q / 2 for every significand a binary64 can hold, so the
+    // quotient is zero and there is no tie to break — but *which* zero is the
+    // mode's decision, not the guard's. IEEE 754-2008 §4.3.3: a nonzero value
+    // rounded in the outward direction is the smallest subnormal of its sign, so
+    // `TowardPositive` on a positive value and `TowardNegative` on a negative one
+    // must produce one unit, never a zero. Returning an unconditional `(0, …)`
+    // here silently mis-rounded every |x| < 2^-35 (BN-B1).
+    //
+    // Guarding the shift at all is not defensive padding: `of_f64` reaches this
+    // with a binary64 *subnormal* input, where `e == -1074` and `shift` is 1050,
+    // and `m >> shift` would be undefined for a 64-bit word.
+    if m == 0UL {
+      return (0UL, false)
+    }
+    let away = match mode {
+      TowardPositive => not(neg)
+      TowardNegative => neg
+      _ => false
+    }
+    return (if away { 1UL } else { 0UL }, true)
   }
   let divisor = 1UL << shift
   let quo = m >> shift
