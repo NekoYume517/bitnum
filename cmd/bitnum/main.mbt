@@ -42,9 +42,9 @@ fn usage_text() -> String {
   )
   sb.write_string("Examples:\n")
   sb.write_string("  bitnum value binary16 0001\n")
-  sb.write_string("  bitnum value @lib.Decimal64 A2300000000003D0\n")
-  sb.write_string("  bitnum bits  @lib.Decimal64 -7.50\n")
-  sb.write_string("  bitnum table @lib.Decimal32\n")
+  sb.write_string("  bitnum value decimal64 A2300000000003D0\n")
+  sb.write_string("  bitnum bits  decimal64 -7.50\n")
+  sb.write_string("  bitnum table decimal32\n")
   sb.to_string()
 }
 
