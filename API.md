@@ -392,8 +392,36 @@ f32 的无穷转成 bf16 的无穷是**精确**的，`of_f32.inexact` 因此为 
 `0x7F7FFFFF` 的值仍舍回它，阈值比较在那个点上是错的），说明中写
 `binary32` 而不是 `binary64`，因为越界的是第二级容器。`inf` / `nan` 不走这条说明。
 
-`bits` 只接受 `nan` / `NaN` / `inf` / `Infinity` / `+Infinity` / `-inf` / `-Infinity`
-这几种特殊值拼写；它们是**值**，不走溢出说明。
+**两条 `bits` 路径的词法来源不同，接受集也不同**（BN-B11，补全自 2026-11-10 审计）。
+这不是疏漏，是两套真实存在的记法：
+
+| | 二进制格式（`binary16` / `bfloat16`） | 十进制格式（`decimal32/64/128`） |
+|---|---|---|
+| 词法来源 | core `strconv.parse_double` + 几个特殊值拼写 | 本包的 `parse_decimal`（IEEE 754 §5.12 的 *to-number* 形式） |
+| 特殊值 | ✅ `nan` / `inf` 族（见下） | ❌ 一律拒绝：`NaN` / `Infinity` 不是数字，由 wire 层从字段构造 |
+| 数字分隔符 `_` | ✅ `1_000`、`1_0e1`、`000_1`、`1e1_0` | ❌ `1_000` → `cannot parse '1_000': junk after the number` |
+| 大小写 | ✅ 不敏感：`NAN`、`Inf`、`INFINITY`、`InFiNiTy` | n/a（不认特殊值） |
+| 前导 `+` / 裸 `.5` / `5.` | ✅ `.5`、`5.`、`+.5`、`-.5`、`00012` | ✅ 同样接受（`0.5` 记法一致） |
+| 十六进制 / 空白 / 逗号 | ❌ `0x10`、`0X10`、`  1.0`、`1.0 `、`1,000` | ❌ 同样拒绝 |
+
+二进制侧实际接受的**特殊值拼写全集**（大小写不敏感，可带正负号）：
+
+```
+nan  NaN  NAN  +nan  -nan      -> 规范安静 NaN（binary16 0x7E00 / bfloat16 0x7FC0）
+inf  Inf  INF  infinity  Infinity  INFINITY   -> 同符号的无穷
+```
+
+带 `+` / `-` 前缀都接受（`+inf`、`-Infinity`、`-nan`）。**不接受** `nan(payload)`、
+`snan`、`infi` 这类扩展拼写 —— 它们不是数字，按语法错退出 1。
+`nan` 转 binary16 会带 `rounded (inexact)` 说明，因为 binary16 装不下 binary64 的
+payload；`inf` / `Infinity` 精确，无说明。
+
+注意 `-nan` 的**符号会被丢掉**（得 `0x7E00` 而非 `0xFE00`）：符号前缀由 CLI 交给
+core 的 `parse_double`，而它在解析时就丢弃了 NaN 的符号位。这是当前实测行为，
+`lexical_wbtest.mbt` 按现状锁定；`±Infinity` 不受影响（符号自己解析）。
+
+该接受集由 `cmd/bitnum/lexical_wbtest.mbt` 逐条锁定（接受 / 拒绝各一组断言），
+防止任一侧词法器改动后文档再次飘移。
 
 **下溢端与上溢端对称**（BN-B10，修复自 2026-11-10 审计）：`1e-999` 量级低于 binary64
 的最小次正规数（`5e-324`），因此**解析阶段**就舍成零，编解码器拿到的已是精确零 ——
