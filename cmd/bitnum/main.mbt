@@ -631,9 +631,16 @@ fn max_coefficient(f : @lib.DecimalFormat) -> BigInt {
 /// `bitnum check <format> <hexbytes>`
 ///
 /// Round-trip: decode the bytes, re-encode the value, compare byte for byte. Exit 1
-/// when it does not hold. A non-canonical DPD input legitimately fails this check —
-/// the encoder can never produce a redundant code — so that case is reported as a
-/// distinct outcome instead of being folded into a silent pass.
+/// when it does not hold. Two legal inputs fail this comparison for reasons that
+/// are not defects, and each gets its own conclusion instead of a bare MISMATCH:
+///
+///   - a non-canonical DPD code, which the encoder can never produce (PLAN.md §4.4)
+///   - the Infinity family, where the bits below the combination field carry no
+///     value and are dropped on encode (BN-B2, PLAN.md §1.1)
+///
+/// Both keep exit 1: the check's contract is byte identity, and neither input is
+/// byte-identical to what the encoder emits. What changes is that the output says
+/// *which* bits were lost and why, so the failure cannot be read as a codec bug.
 fn cmd_check(format_name : String, hex : String) -> Int32 raise {
   let fmt = match check_format(format_name) {
     Some(f) => f
@@ -685,8 +692,61 @@ fn cmd_check(format_name : String, hex : String) -> Int32 raise {
         }
       }
       let same = back.compare(raw) == 0
-      report_bits_check(f.to_hex(raw), f.to_hex(back), same)
+      match classify_decimal_check(decoded, same) {
+        CheckRoundTrip => report_bits_check(f.to_hex(raw), f.to_hex(back), true)
+        CheckInfinityPadding => {
+          println("in    \{f.to_hex(raw)}")
+          println("out   \{f.to_hex(back)}")
+          println("value \{decoded.value.to_scientific_string()}")
+          println(
+            "result: infinity family — the bits below the combination field carry no value for Infinity, so the encoder writes only the canonical `11110` plus a zeroed exponent continuation; the value round-trips, those padding bits do not (PLAN.md §1.1, API.md §6)",
+          )
+          // Byte identity still fails, so the exit code stays 1: a scripted
+          // caller that treats non-zero as "not byte-identical" keeps working.
+          EXIT_DATA
+        }
+        CheckMismatch => report_bits_check(f.to_hex(raw), f.to_hex(back), false)
+      }
     }
+  }
+}
+
+///|
+/// Which conclusion a decimal `check` run reaches.
+///
+/// The three cases are genuinely different questions, and folding them into one
+/// boolean is what made BN-B2 read as a codec bug: "the bytes came back
+/// different" is true for all of them, but only the last one is unexplained.
+enum CheckVerdict {
+  /// Bytes identical: the ordinary success.
+  CheckRoundTrip
+  /// Same datum, different bits, and the difference is bits that carry no value.
+  CheckInfinityPadding
+  /// Bytes differ with no benign explanation.
+  CheckMismatch
+}
+
+///|
+/// Classify a decimal `check` result. Pure, so the classification can be tested
+/// without capturing stdout.
+///
+/// `same` is byte identity; `decoded` is what came back from the wire. Only the
+/// Infinity branch can absorb a byte difference: for a finite datum every bit
+/// below the combination field is part of the value (the exponent continuation
+/// and the DPD groups), and for a NaN it is the payload, which `encode_raw`
+/// preserves. Infinity is the one class where the standard says the rest of the
+/// pattern is ignored — `decode_raw` already relies on that to accept `0x79`
+/// through `0x7B` (API.md §6).
+fn classify_decimal_check(
+  decoded : @lib.DecodedDecimal,
+  same : Bool,
+) -> CheckVerdict {
+  if same {
+    CheckRoundTrip
+  } else if decoded.value.kind == @lib.DInfinity {
+    CheckInfinityPadding
+  } else {
+    CheckMismatch
   }
 }
 

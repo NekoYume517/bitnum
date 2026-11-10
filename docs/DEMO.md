@@ -250,6 +250,23 @@ kind=finite  value=888   (1 non-canonical DPD group(s); the encoder cannot produ
 
 `888` 正是标准规定的 8/9 序列 —— 不是零、不是报错、不是"修正成最近的合法值"。
 
+**Infinity 族是第二个必须单独说明的结论**（BN-B2，修复自 2026-11-10 审计）。
+组合字段为 `11110` 时，其下各位不承载值，所以 `0x78`–`0x7B` 都解成 Infinity；
+编码器只写规范的 `0x78`。修复前这里报笼统的 `MISMATCH`，看起来像编解码器的缺陷：
+
+```
+$ bitnum check decimal32 79000000
+in    79000000
+out   78000000
+value Infinity
+result: infinity family — the bits below the combination field carry no value for Infinity, so the encoder writes only the canonical `11110` plus a zeroed exponent continuation; the value round-trips, those padding bits do not (PLAN.md §1.1, API.md §6)
+exit=1
+```
+
+退出码**仍是 1**：`check` 的契约是字节恒等，而这几个填充位确实不会回来。
+不同之处是输出说清了「丢的是哪些位、为什么这些位不算值」，所以它读起来不再是
+一个查不出的 bug。`78000000` 本身照旧 `round-trip ok` / `exit 0`。
+
 ## 5. `bitnum table` — 边界值表
 
 ```
