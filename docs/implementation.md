@@ -286,7 +286,15 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
   上限与「调整指数 ≤ Emax」两道检查，修的过程中我自己两次把 `Emax`/`Etiny`
   推错，都被 `exact` 计数立刻抓住。修完后该脚本仍对 568 条官方向量全绿，
   且重新生成的向量表与改动前逐字节相同 —— 证明缺陷从未污染基准数据。
-- **`Float::to_float`（`Double` → `Float`）用了平台转换**，在 CLI 的 `bits bfloat16`
+- **`Float::from_double`（`Double` → `Float`）用了平台转换**，在 CLI 的 `bits bfloat16`
   路径上。这一处不是本包实现的，它只负责把用户输入的十进制变成 binary32；
   之后 binary32 → bfloat16 才是本包的代码。也就是说 `bits bfloat16` 的
   第一段隐含依赖平台的 binary32 转换精度，测试覆盖的是第二段。
+- **因此 `bits bfloat16` 是双舍入**：`double → float → bfloat16` 两段各舍一次，
+  而不是 `double → bfloat16` 一次舍到 8 位有效数字。两者在**边界情形**上会给出
+  不同结果 —— 一个恰好落在两个 bf16 值中点附近的 binary64，可能先被第一段推到
+  另一侧，再被第二段舍走。`of_f32_nearest` 单独使用时是单舍入且已证明；
+  CLI 那条路径不是，这是**已声明的简化**，不是未发现的缺陷。
+  向量表 `examples/vectors-binary16.tsv` 的 bf16 行同样是在 binary32 上取的输入
+  （`float_ref.py` 的 `bf16_round` 也先 `struct.pack("<f")`），所以参考实现与实现
+  共享这条前提，交叉验证覆盖的是第二段。

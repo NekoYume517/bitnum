@@ -20,7 +20,7 @@ keywords = [
 
 preferred_target = "wasm"
 
-description = "Exact bit-level codecs for numeric interchange formats: IEEE 754 half/bfloat16, and IEEE 754-2008 decimal64/decimal128 with DPD and BID encodings, byte-for-byte round-trip and conformance tables."
+description = "Exact bit-level codecs for numeric interchange formats: IEEE 754 binary16 and bfloat16, and IEEE 754-2008 decimal32/64/128 with DPD encoding, field breakdowns and dectest-backed conformance tables. BID is out of scope."
 
 import {
   "moonbitlang/x@0.5.6",

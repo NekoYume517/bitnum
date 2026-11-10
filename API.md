@@ -136,6 +136,15 @@ pub fn truncate_round_differ(Float) -> Bool                     // 两者是否�
 所以判定基于**源值**（`exp == 0xFF && mantissa != 0`），不是截断后的模式：
 截断后的模式里 Inf 和 payload 耗尽的 NaN 都显示 `sig == 0`，分不开。
 
+**bfloat16 没有 binary64 直连入口，这是有意的**（BN-B12，补声明自 2026-11-10 审计）。
+库只提供 binary32 → bfloat16（`of_f32` / `of_f32_truncate`），所以
+`Double → bfloat16` 必然经过 `Double → Float` 这一步，而这一步是**平台转换**、
+不在本包内。于是 CLI 的 `bits bfloat16` 是 `double → float → bf16` 的**双舍入**，
+与 `double → bf16` 一次舍到 8 位有效数字在边界情形下可能不同。
+`of_f32` 本身是单舍入且已被 5 种模式 × 向量表覆盖；双舍入只出现在 CLI 这条
+由两段组成的路径上，属于已声明的简化（另见 docs/implementation.md §10），
+不是未发现的缺陷。要用单舍入，调用方拿到的应该是 binary32 而非 binary64。
+
 ## 4. 十进制三元组 `src/decimal.mbt`
 
 ```moonbit
