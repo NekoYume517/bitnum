@@ -198,6 +198,30 @@ bitnum: note: '-1e999' is too large for binary64; rounded to infinity (inexact)
 exit=0
 ```
 
+下溢端是对称的（BN-B10，修复自 2026-11-10 审计）。`1e-999` 量级低于 binary64 的最小
+次正规数（`5e-324`），**解析阶段**就舍成零；编解码器收到的已是精确零，`inexact` 无从
+报告，修复前它与 `bits binary16 0` 的输出一模一样：
+
+```
+$ bitnum bits binary16 1e-999
+0000
+bitnum: note: '1e-999' is too small for binary64; rounded to zero (inexact)
+exit=0
+```
+
+真正表示零的字面量（`0` / `-0` / `0e-999`）仍然静默 —— 它们的零是精确的，没有舍入可
+报告。可表示的 binary64 次正规数保持原来的单句 `rounded (inexact)`：
+
+```
+$ bitnum bits binary16 1e-320
+0000
+bitnum: note: rounded (inexact)
+exit=0
+```
+
+判据是字面量里**是否含非零数字**（指数部分不算），所以 `0.000e-999` 静默、
+`1e-999` 与 `0.0001e-999` 都报下溢。
+
 符号跟着原字面量走。bfloat16 的容器更宽（指数域 8 位），同样输入落在 `7F80`：
 
 ```

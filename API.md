@@ -377,6 +377,7 @@ bitnum check <format> <hexbytes>    # 往返校验
 | 语法错（`xyz`、`1.2.3`、`1e`、空串） | **1** | `bitnum: not a number: '<原文本>'` | 数据错误，与 `decimal` 分支口径一致；绝不静默换成 `+0`（PLAN.md §1.2） |
 | 溢出（`1e999`、`1e309`） | **0** | `bitnum: note: '<原文本>' is too large for binary64; rounded to infinity (inexact)` | IEEE 754 §7.4：就近舍入溢出到 ±Inf，故 stdout 给 `7C00`/`FC00`（bfloat16 是 `7F80`/`FF80`） |
 | bfloat16 二级溢出（`1e39`、`3.5e38`） | **0** | `bitnum: note: '<原文本>' is too large for binary32; rounded to infinity (inexact)` | bfloat16 是 binary32 的高半，`Double → Float` 先溢出；那一步在 `of_f32` 的 `inexact` 之外（f32 无穷转 bf16 无穷是精确的），所以单独判定（BN-B4） |
+| 低于 binary64 的非零字面量（`1e-999`） | **0** | `bitnum: note: '<原文本>' is too small for binary64; rounded to zero (inexact)` | 舍入发生在 `parse_double` 内部，编解码器收到的已经是精确的零，旗标无从报告（BN-B10） |
 
 区分这两种是修复的核心：`strconv.parse_double` 对二者都 raise `Failure`，但
 `"value out of range"` 是**合法的数**、`"invalid syntax"` 是**不是数**。把两者一并折成
@@ -393,6 +394,15 @@ f32 的无穷转成 bf16 的无穷是**精确**的，`of_f32.inexact` 因此为 
 
 `bits` 只接受 `nan` / `NaN` / `inf` / `Infinity` / `+Infinity` / `-inf` / `-Infinity`
 这几种特殊值拼写；它们是**值**，不走溢出说明。
+
+**下溢端与上溢端对称**（BN-B10，修复自 2026-11-10 审计）：`1e-999` 量级低于 binary64
+的最小次正规数（`5e-324`），因此**解析阶段**就舍成零，编解码器拿到的已是精确零 ——
+`inexact` 旗标此时无话可说，修复前它输出 `0000`、exit 0、stderr 空，与 `bits binary16 0`
+完全一样。现在按字面量判定：**含非零数字**的字面量补
+`'<原文本>' is too small for binary64; rounded to zero (inexact)`；真正表示零的
+（`0`、`0.0`、`-0`、`+0`、`0e-999`）保持静默，因为它们的零是精确的。
+`1e-320` 这类可表示的 binary64 次正规数仍走 `rounded (inexact)` —— 两个下溢诊断
+发生的位置不同，措辞也不同。
 
 `check` 在非规范 DPD 输入上退出 1 —— 那是**合法但无规范形式**的输入，
 编码器的值域天然排除那 24 个码。它被单独说明，而不是折进"静默通过"。

@@ -354,11 +354,63 @@ fn bits_note(
 }
 
 ///|
+/// The note for a literal that is *nonzero* but whose binary64 value is zero.
+///
+/// This is the mirror of the overflow note and it exists for the same reason: `0000`
+/// alone cannot be distinguished from a faithful encoding of `0`, and the codec's
+/// `inexact` flag is silent here because the value it received really was an exact
+/// zero — the rounding happened one step earlier, in the parse (BN-B10).
+///
+/// Worded in the same family as the overflow note so a caller matching on
+/// "too large/small for binary64" sees one pattern.
+fn binary64_underflow_note(text : String) -> String {
+  "'\{text}' is too small for binary64; rounded to zero (inexact)"
+}
+
+///|
+/// Whether the literal denotes a nonzero value that binary64 collapsed to zero.
+///
+/// The test is on the *text*, not on a parsed value, because by the time there is a
+/// value it is already zero and "was this zero in the source?" is unanswerable. A
+/// literal is judged nonzero when it has at least one nonzero digit anywhere before
+/// the exponent marker — that covers `1e-999`, `0.0001e-999` and `1.2e-400`, and
+/// excludes `0`, `0.0`, `-0`, `+0`, `0e-999` and `000.000e-5`, which all denote zero
+/// and whose conversion to zero is exact.
+fn literal_has_nonzero_digit(text : String) -> Bool {
+  for i in 0..<text.length() {
+    let c = text.get_char(i).unwrap()
+    if c == 'e' || c == 'E' {
+      // The exponent's digits say how far to shift, not how big the value is, so the
+      // scan stops here.
+      break
+    }
+    if c >= '1' && c <= '9' {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// The note a literal deserves when the parse produced zero: the underflow note for a
+/// nonzero literal, nothing at all for an actual zero.
+fn underflow_note(text : String) -> String {
+  if literal_has_nonzero_digit(text) {
+    binary64_underflow_note(text)
+  } else {
+    ""
+  }
+}
+
+///|
 /// Convert a literal to binary16 wire bytes.
 fn binary16_bits(text : String) -> BitsOutcome {
   match read_double_literal(text) {
     LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
-    LiteralOk(x) => binary16_convert(x, false, "")
+    // The literal travels with the value on both non-overflow paths: the underflow
+    // note needs the text to tell a nonzero literal that parsed to zero from a
+    // literal that *is* zero (BN-B10).
+    LiteralOk(x) => binary16_convert(x, false, text)
     LiteralOverflow(x) => binary16_convert(x, true, text)
   }
 }
@@ -367,10 +419,15 @@ fn binary16_bits(text : String) -> BitsOutcome {
 fn binary16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
   try {
     let conv = @lib.of_f64(x, @lib.NearestEven)
-    BitsHex(
-      hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
-      bits_note(conv, overflow, text),
-    )
+    // `x == 0.0` is true for both signed zeros, which is what is wanted here: the
+    // choice between "the literal underflowed" and "the literal was zero" is made
+    // from the text, not from the sign of a value that is already zero.
+    let note = if not(overflow) && x == 0.0 {
+      underflow_note(text)
+    } else {
+      bits_note(conv, overflow, text)
+    }
+    BitsHex(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)), note)
   } catch {
     e => BitsRejected("bitnum: \{e.describe()}")
   }
@@ -412,6 +469,16 @@ fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
       hex_of_bytes(word_to_bytes(bits.to_uint(), 2)),
       binary32_overflow_note(text),
     )
+  }
+  // The parse-underflow note comes first: if the literal already collapsed to zero in
+  // binary64, that is the rounding worth reporting, and the codec will have nothing
+  // to add (BN-B10).
+  if not(overflow) && x == 0.0 {
+    let z = underflow_note(text)
+    if z != "" {
+      let conv = @lib.of_f32(narrowed, @lib.NearestEven)
+      return BitsHex(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)), z)
+    }
   }
   let conv = @lib.of_f32(narrowed, @lib.NearestEven)
   BitsHex(
