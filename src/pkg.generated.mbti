@@ -99,7 +99,7 @@ pub(all) suberror BitnumError {
   DpdRedundantCodeAccepted(UInt32, String)
   CombinationInvalid(UInt32)
   CoefficientTooLarge(Int32, Int32)
-  ExponentOutOfRange(Int32, Int32, Int32)
+  ExponentOutOfRange(Int64, Int64, Int64)
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)
   InexactConversion(String)
   TruncatedInput(Int32, Int32)
