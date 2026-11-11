@@ -269,6 +269,12 @@ A2300000000003D0   (16 位，正确)      -> 正常解析
 `decode_bytes` 对短 buffer 早就报 `TruncatedInput`，同一个错误形态在两个入口不一致。
 补零会让上面那个手误变成「有意义」，正是 PLAN.md §1.2 禁止的静默修正。
 
+**`decode_bytes` 现在同样要求精确宽度**（BN-B13，2026-11-11 审计）：修复前它只判
+`got < needed`，9 字节的 buffer 会被当成 decimal64 —— 前 8 字节解出一个值，尾部
+垃圾无声丢弃。这与 `from_hex` 对超长串的处理正好相反，而两个入口处理的本来就是
+同一份输入。现在两边都报 `TruncatedInput(width, got)`：**多出来的字节不是填充**，
+和漏一个字节一样，都是「这不是一个 decimal64」。
+
 CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex digits, got 15`。
 库的措辞按字节计（`decode_bytes` 需要字节），CLI 的按 hex 字符计 —— 在边界翻译，
 两边都不说错单位。
