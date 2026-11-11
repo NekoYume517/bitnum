@@ -144,6 +144,45 @@ test "decimal wire: short byte input is rejected with both lengths" {
 }
 
 ///|
+/// **长**的输入同样要拒（BN-B13，2026-11-11 审计）。
+///
+/// 修复前 `decode_bytes` 只判 `got < needed`，多出来的尾部字节被无声丢弃：
+///
+/// ```moonbit nocheck
+/// let _ = f.decode_bytes(b"\x00\x00\x00\x00\x00\x00\x00\x00\xFF")  // 9 字节
+/// // 修复前：静默解出前 8 字节，返回 0（看起来一切正常）
+/// ```
+///
+/// 这与 `from_hex` 已经做出的判断相反（同一份注释里写着"两个入口不能不一致"）：
+/// 十六进制串 `A2300000000003D0FF`（17 字符）会被 `TruncatedInput` 拒掉，
+/// 而同样的 9 个字节走 `decode_bytes` 却能通过。两边都改用 `!=` 之后，
+/// 「长度不对」只有一条口径。
+test "decimal wire: oversized byte input is rejected, not silently truncated" {
+  let f : DecimalFormat = Decimal64
+  let nine = b"\x00\x00\x00\x00\x00\x00\x00\x00\xFF"
+  let r = try {
+    let _ = f.decode_bytes(nine)
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "needed \{needed}, got \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(r, content="needed 8, got 9")
+  // 同样的 17 个十六进制字符在 `from_hex` 里也必须被拒 —— 两个入口同一口径
+  let hex = try {
+    let _ = f.from_hex("A2300000000003D0FF")
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "needed \{needed}, got \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(hex, content="needed 16, got 18")
+  // 恰好 8 字节仍然能解（边界另一侧不能被误伤）
+  let ok = f.decode_bytes(b"\xA2\x30\x00\x00\x00\x00\x03\xD0").value
+  inspect(ok.to_scientific_string(), content="-7.50")
+}
+
+///|
 test "decimal wire: oversized coefficient is rejected with digit counts" {
   let f : DecimalFormat = Decimal32
   // 8 digits into a 7-digit format.

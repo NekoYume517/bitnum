@@ -503,13 +503,22 @@ pub fn DecimalFormat::encode_bytes(
 
 ///|
 /// Decode from the format's natural byte string, big-endian.
+///
+/// The length must be **exactly** the format's width, not merely long enough
+/// (BN-B13, 2026-11-11 audit). Repairing the check from `<` to `!=` is the same
+/// call `from_hex` already makes, and for the same reason: a 9-byte buffer is not
+/// "a decimal64 with padding", it is "not a decimal64". Before the change the
+/// extra bytes were silently dropped and the first 8 decoded as if they were the
+/// whole record — the one failure mode the project's own contract (`PLAN.md`
+/// §1.2: never skip, pad, or mask) rules out. It is also the only place where the
+/// two entry points disagreed, which `from_hex`'s comment claims cannot happen.
 pub fn DecimalFormat::decode_bytes(
   self : DecimalFormat,
   bytes : Bytes,
 ) -> DecodedDecimal raise BitnumError {
   let needed = self.byte_width()
   let got = bytes.length()
-  if got < needed {
+  if got != needed {
     raise TruncatedInput(needed, got)
   }
   let mut acc = BigInt::from_int(0)
