@@ -126,8 +126,14 @@ pub fn Decimal::digit_count(self : Decimal) -> Int32 {
 /// coefficient were written with a single leading digit, i.e.
 /// `exponent + digits - 1`. For zero (digit count 1) this equals the exponent,
 /// which is what the standard specifies.
-pub fn Decimal::adjusted_exponent(self : Decimal) -> Int32 {
-  self.exponent + self.digit_count() - 1
+///
+/// The sum is computed in `Int64` because it does not fit `Int32`: the container
+/// holds any `Int32` exponent and a coefficient of up to 34 digits, so
+/// `parse_decimal("10e2147483647")` has adjusted exponent `2147483648`. Computing
+/// it in `Int32` wrapped that to `-2147483648`, which made the value compare
+/// numerically equal to `1e-2147483648` and render as `1.0E-2147483648`.
+pub fn Decimal::adjusted_exponent(self : Decimal) -> Int64 {
+  self.exponent.to_int64() + self.digit_count().to_int64() - 1L
 }
 
 ///|
@@ -158,8 +164,8 @@ pub fn Decimal::to_scientific_string(self : Decimal) -> String {
         let digits = self.coefficient.to_string(radix=10)
         let n = digits.length()
         let exp = self.exponent
-        let adjusted = exp + n - 1
-        if exp <= 0 && adjusted >= -6 {
+        let adjusted = self.adjusted_exponent()
+        if exp <= 0 && adjusted >= -6L {
           if exp == 0 {
             sign + digits
           } else {

@@ -167,12 +167,19 @@ pub fn Decimal::is_zero(Self) -> Bool
 pub fn Decimal::is_nan(Self) -> Bool
 pub fn Decimal::is_negative(Self) -> Bool     // 符号位，不是"小于零"
 pub fn Decimal::digit_count(Self) -> Int
-pub fn Decimal::adjusted_exponent(Self) -> Int
+pub fn Decimal::adjusted_exponent(Self) -> Int64     // 需要 33 位，见下
 pub fn Decimal::to_scientific_string(Self) -> String
 
 pub fn parse_decimal(StringView) -> Decimal raise BitnumError
 pub fn numerically_equal(Decimal, Decimal) -> Bool
 ```
+
+`adjusted_exponent` 返回 `Int64`，不是 `Int`：它是 `exponent + digits - 1`，而
+容器容纳任意 `Int32` 指数与最多 34 位系数，所以这个和需要 33 位。用 `Int`（32 位）
+计算会把 `parse_decimal("10e2147483647")` 的调整指数 `2147483648` 绕成
+`-2147483648`，于是它与 `1e-2147483648` 被判为「数值相等」，渲染成
+`1.0E-2147483648`。格式自身的指数范围（90 / 369 / 6111）离这个边界很远，
+所以任何只在格式域内取值的测试都看不见它。
 
 变体名带 `D` 前缀（`DInfinity`、`DNan`）是因为它们和 `FloatClass` 的
 `Infinity`/`Nan` 同包，不限定就是歧义。

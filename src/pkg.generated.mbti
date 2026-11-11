@@ -145,7 +145,7 @@ pub(all) struct Decimal {
   exponent : Int32
   kind : DecimalKind
 }
-pub fn Decimal::adjusted_exponent(Self) -> Int32
+pub fn Decimal::adjusted_exponent(Self) -> Int64
 pub fn Decimal::digit_count(Self) -> Int32
 pub fn Decimal::infinity(Bool) -> Self
 pub fn Decimal::is_nan(Self) -> Bool
