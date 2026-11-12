@@ -303,7 +303,7 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     if etext.length() == 0 {
       raise UnparsableInput(s, "exponent with no digits")
     }
-    let mag = digits_to_int64(etext)
+    let mag = digits_to_int64(etext, exp_negative)
     let signed = if exp_negative { -mag } else { mag }
     // Both operands are within `Int32` (the scanner bound `mag` there), so their
     // `Int64` sum cannot overflow `Int64` either. The check is therefore on the
@@ -375,7 +375,15 @@ fn strip_trailing_zeros(v : BigInt) -> BigInt {
 /// can hold. Only the *signed sum* is checked against `Int32`, so the scanner stays
 /// as permissive as the container and the single, honest rejection comes from the
 /// arithmetic the audit found broken (BN-B3).
-fn digits_to_int64(text : String) -> Int64 raise BitnumError {
+///
+/// `negative` is the input's own exponent sign. When the magnitude is too wide even
+/// for `Int64` the report **saturates** to `Int64::MIN` / `Int64::MAX` with that
+/// sign, and the bounds are the container's `[-2147483648, 2147483647]` — the real
+/// bound this path is about. Reporting the scanned prefix instead (the pre-2026-11-12
+/// wording `[0, 2147483647]` with a truncated magnitude) said nothing about the
+/// container, and the test that locked it only asserted "no minus sign", which ruled
+/// out negative lower bounds for the wrong reason.
+fn digits_to_int64(text : String, negative : Bool) -> Int64 raise BitnumError {
   // Int64::max / 10, so folding one more digit in cannot wrap.
   let limit : Int64 = 922337203685477580L
   let mut acc : Int64 = 0L
@@ -383,7 +391,13 @@ fn digits_to_int64(text : String) -> Int64 raise BitnumError {
     let c = text.get_char(i).unwrap()
     let d = Int64::from_int(c.to_int() - '0'.to_int())
     if acc > limit {
-      raise UnbiasedExponentOutOfRange(acc, 0L, 2147483647L)
+      // Far past `Int64`: saturate to the signed end of what the report can carry.
+      let saturated = if negative {
+        -9223372036854775807L - 1L
+      } else {
+        9223372036854775807L
+      }
+      raise UnbiasedExponentOutOfRange(saturated, -2147483648L, 2147483647L)
     }
     acc = acc * 10L + d
   }

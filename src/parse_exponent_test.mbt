@@ -63,18 +63,45 @@ test "encode_raw: the biased sum is reported without wrapping" {
 }
 
 ///|
-/// A magnitude too wide even for `Int64` is still reported by value rather than
-/// wrapping. The scanner's guard is on the accumulator, so the number in the
-/// message is a prefix of the input — never a negative number minted by overflow.
-test "parse_decimal: an astronomically wide exponent reports a positive magnitude" {
+/// A magnitude too wide even for `Int64` is reported as a **saturated** value with
+/// the input's own sign, against the container's real bound `[-2147483648,
+/// 2147483647]`. The pre-2026-11-12 version reported the scanned prefix against
+/// `[0, 2147483647]`, and the locking test only asserted "no minus sign" — an
+/// assertion about a proxy that also ruled out the honest negative lower bound
+/// (2026-11-12 audit, C1). Saturating is the honest statement of degree: the input
+/// is far past the container, and no number is minted by wrapping.
+test "parse_decimal: an astronomically wide positive exponent saturates at Int64::max" {
   let msg = try {
     let _ = parse_decimal("1e99999999999999999999999999")
     "no error"
   } catch {
     e => e.describe()
   }
-  inspect(msg.contains("-"), content="false")
-  inspect(msg.contains("exponent"), content="true")
+  inspect(
+    msg.contains(
+      "exponent 9223372036854775807 out of range [-2147483648, 2147483647]",
+    ),
+    content="true",
+  )
+}
+
+///|
+/// The same magnitude with a negative exponent sign saturates to `Int64::min` —
+/// the sign of the report follows the sign of the input, which is exactly what the
+/// old `contains("-")` check could not express.
+test "parse_decimal: an astronomically wide negative exponent saturates at Int64::min" {
+  let msg = try {
+    let _ = parse_decimal("1e-99999999999999999999999999")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    msg.contains(
+      "exponent -9223372036854775808 out of range [-2147483648, 2147483647]",
+    ),
+    content="true",
+  )
 }
 
 ///|

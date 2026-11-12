@@ -36,6 +36,14 @@ pub(all) suberror BitnumError {
   /// exponent, and `0.01e-2147483647` wants `-2147483649`. Narrowing the report
   /// back to `Int32` would wrap it into a different, plausible number — exactly
   /// the defect this variant exists to report (BN-B3).
+  ///
+  /// When the magnitude is too wide even for `Int64` (`1e9999999999999999999`),
+  /// the reported value **saturates** to `Int64::MIN` / `Int64::MAX` with the
+  /// input's own sign, and the bounds are always the container's
+  /// `[-2147483648, 2147483647]`. Saturating is honest about degree ("far past
+  /// the container") and never mints a number by wrapping; the alternative —
+  /// reporting the scanned prefix — was a weaker assertion that also ruled out
+  /// negative lower bounds (2026-11-12 audit, C1).
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)
   /// Source and target of a conversion that cannot be represented exactly — a
   /// *semantic* rejection: the input was understood, and the container is too small.
