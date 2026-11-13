@@ -480,6 +480,19 @@ fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
       return BitsHex(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)), z)
     }
   }
+  // The mirror of the binary32 overflow above (D3, 2026-11-13 audit): when the first
+  // narrowing rounded a nonzero literal all the way to zero, `of_f32` receives an
+  // exact zero and its `inexact` flag stays false, so `bits_note` had nothing to say
+  // and `1e-46` printed the same `0000`, exit 0, empty stderr as `0`. The narrowing
+  // is the step that lost the value, so the note has to be decided on it — the same
+  // reasoning that made BN-B4 inspect `narrowed` rather than a magnitude threshold.
+  if not(overflow) && narrowed == 0.0F && not(x == 0.0) {
+    let conv = @lib.of_f32(narrowed, @lib.NearestEven)
+    return BitsHex(
+      hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
+      binary32_underflow_note(text),
+    )
+  }
   let conv = @lib.of_f32(narrowed, @lib.NearestEven)
   BitsHex(
     hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
@@ -496,6 +509,19 @@ fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
 /// fine.
 fn binary32_overflow_note(text : String) -> String {
   "'\{text}' is too large for binary32; rounded to infinity (inexact)"
+}
+
+///|
+/// The note for a literal that is finite and nonzero in binary64 but whose first
+/// narrowing (`Double -> Float`) already rounded it to zero.
+///
+/// Same family and same reasoning as `binary32_overflow_note` — name the limit that
+/// was actually crossed, `binary32`, because the binary64 value was fine — and the
+/// same reason for a note at all: `0000` alone is indistinguishable from a faithful
+/// conversion of `0`, and `of_f32`'s `inexact` flag is silent here because the zero
+/// it received really was exact.
+fn binary32_underflow_note(text : String) -> String {
+  "'\{text}' is too small for binary32; rounded to zero (inexact)"
 }
 
 ///|

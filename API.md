@@ -414,6 +414,7 @@ bitnum check <format> <hexbytes>    # 往返校验
 | 语法错（`xyz`、`1.2.3`、`1e`、空串） | **1** | `bitnum: not a number: '<原文本>'` | 数据错误，与 `decimal` 分支口径一致；绝不静默换成 `+0`（PLAN.md §1.2） |
 | 溢出（`1e999`、`1e309`） | **0** | `bitnum: note: '<原文本>' is too large for binary64; rounded to infinity (inexact)` | IEEE 754 §7.4：就近舍入溢出到 ±Inf，故 stdout 给 `7C00`/`FC00`（bfloat16 是 `7F80`/`FF80`） |
 | bfloat16 二级溢出（`1e39`、`3.5e38`） | **0** | `bitnum: note: '<原文本>' is too large for binary32; rounded to infinity (inexact)` | bfloat16 是 binary32 的高半，`Double → Float` 先溢出；那一步在 `of_f32` 的 `inexact` 之外（f32 无穷转 bf16 无穷是精确的），所以单独判定（BN-B4） |
+| bfloat16 二级下溢（`1e-46`、`1e-320`） | **0** | `bitnum: note: '<原文本>' is too small for binary32; rounded to zero (inexact)` | 同一处两次窄化的**另一端**：`Double → Float` 把非零字面量舍成 0，`of_f32` 收到的是精确零、`inexact` 为 false，于是修复前 `0000`、exit 0、stderr 空，与 `bits bfloat16 0` 完全一样（D3，2026-11-13 审计，对称于 BN-B4） |
 | 低于 binary64 的非零字面量（`1e-999`） | **0** | `bitnum: note: '<原文本>' is too small for binary64; rounded to zero (inexact)` | 舍入发生在 `parse_double` 内部，编解码器收到的已经是精确的零，旗标无从报告（BN-B10） |
 
 区分这两种是修复的核心：`strconv.parse_double` 对二者都 raise `Failure`，但
@@ -428,6 +429,14 @@ f32 的无穷转成 bf16 的无穷是**精确**的，`of_f32.inexact` 因此为 
 现在按第一次窄化的**实际结果**判定（不是按量级阈值：就近舍入会把略高于
 `0x7F7FFFFF` 的值仍舍回它，阈值比较在那个点上是错的），说明中写
 `binary32` 而不是 `binary64`，因为越界的是第二级容器。`inf` / `nan` 不走这条说明。
+
+同一处窄化的**下溢端**同样可见（D3，修复自 2026-11-13 审计）：`Float::from_double`
+把 `1e-46` 舍成 `0.0` 之后，`of_f32` 收到的是精确零、`inexact` 为 `false`，
+修复前输出 `0000`、exit 0、stderr 空 —— 与 `bits bfloat16 0` 逐字节相同，而
+`bits binary16 1e-46` 对同一个字面量会给 `rounded (inexact)`。判据同样落在
+「第一次窄化实际产生了什么」上：非零字面量 + 窄化结果为 ±0。符号照旧保真
+（`-1e-46` → `8000`），`1e-999` 那种在 binary64 就已经舍成零的仍走
+`too small for binary64`（判定在更早的解析阶段，措辞按那一级写）。
 
 **两条 `bits` 路径的词法来源不同，接受集也不同**（BN-B11，补全自 2026-11-10 审计）。
 这不是疏漏，是两套真实存在的记法：

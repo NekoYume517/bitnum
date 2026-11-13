@@ -84,6 +84,89 @@ test "bits: the binary32 overflow keeps exit 0 and only adds a note" {
 }
 
 ///|
+/// D3 (2026-11-13 audit, P3): the *underflow* end of the same two-step narrowing
+/// was still silent.
+///
+/// BN-B4 fixed the binary32 **overflow** by looking at what the narrowing actually
+/// produced, because `of_f32` sees an f32 infinity and calls it exact. The mirror
+/// case was never covered: `Float::from_double(1e-46)` is `0.0`, `of_f32` sees an
+/// exact zero, and `bits_note` therefore says nothing at all —
+///
+///   $ bitnum bits bfloat16 1e-46
+///   0000
+///   (exit 0, empty stderr)
+///
+/// which is byte-for-byte the output of `bits bfloat16 0`. `binary16` on the same
+/// literal reports `rounded (inexact)`, and API.md §9 promises a note whenever the
+/// result was rounded, so the two formats disagree about the same class of input.
+/// The literal is nonzero; the zero is a rounding result, and it has to say so.
+test "bits: bfloat16 reports the binary32-range underflow on stderr" {
+  match bfloat16_bits("1e-46") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="0000")
+      inspect(note.contains("1e-46"), content="true")
+      inspect(note.contains("too small for binary32"), content="true")
+      inspect(note.contains("inexact"), content="true")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // The sign survives the narrowing, exactly as on the overflow side.
+  match bfloat16_bits("-1e-46") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="8000")
+      inspect(note.contains("-1e-46"), content="true")
+      inspect(note.contains("too small for binary32"), content="true")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // `1e-320` is a legal binary64 subnormal and also below binary32's smallest
+  // subnormal, so it takes the same path.
+  match bfloat16_bits("1e-320") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="0000")
+      inspect(note.contains("too small for binary32"), content="true")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // Exit code stays 0: nothing was rejected (IEEE 754 has a defined answer for an
+  // underflow), the note is what makes the rounding visible.
+  inspect(cmd_bits("bfloat16", "1e-46") catch { _ => -1 }, content="0")
+}
+
+///|
+/// The new branch must not swallow the two diagnoses around it: a literal that
+/// binary32 *can* hold keeps the ordinary `rounded (inexact)` note (the rounding
+/// then happened in `of_f32`, which does flag it), and a literal that binary64
+/// already collapsed to zero keeps the parse-underflow wording.
+test "bits: the binary32 underflow note is confined to the f32-to-zero band" {
+  // 1e-42 narrows to an f32 subnormal, so `of_f32` reports the rounding itself.
+  match bfloat16_bits("1e-42") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="0000")
+      inspect(note, content="rounded (inexact)")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // Below binary64's range the parse already rounded to zero: that note comes
+  // first and names binary64.
+  match bfloat16_bits("1e-999") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="0000")
+      inspect(note.contains("too small for binary64"), content="true")
+      inspect(note.contains("binary32"), content="false")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // A literal that really is zero stays silent.
+  for text in ["0", "-0", "0e-999"] {
+    match bfloat16_bits(text) {
+      BitsHex(_, note) => inspect(note, content="")
+      BitsRejected(r) => inspect(r, content="unexpected rejection")
+    }
+  }
+}
+
+///|
 /// The boundary is where round-to-nearest actually turns into an f32 infinity, not
 /// where the magnitude passes binary32's largest finite value. `3.4028235e38` is
 /// slightly *above* `0x7F7FFFFF` yet still rounds back down to it, so the literals
