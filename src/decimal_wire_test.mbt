@@ -311,16 +311,35 @@ test "decimal wire: NaN payload wider than the container is rejected" {
 }
 
 ///|
+
+///|
+/// D2 (2026-11-13 audit, P3): this test could not fail.
+///
+/// It asserted `junk.length() > 0` on a string produced by *both* catch arms — the
+/// expected one and the catch-all `"wrong error variant"` — so any variant at all
+/// satisfied it. It also named the wrong variant: `from_hex` has raised
+/// `UnparsableInput` since BN-B9, so the arm that actually ran was the catch-all and
+/// the test was green while reporting "wrong error variant" into the same
+/// length check. That is the proxy-assertion pattern the project already treats as a
+/// defect (`contains("-")` in `parse_exponent_test`, `contains("P")` mistaking
+/// `DISPLAY`): it records that *something* happened, not what was required.
+///
+/// Pinning the variant and the sentence is what makes the next refactor of the error
+/// type visible here, and it re-states the contract BN-B9 established: a non-hex
+/// character is a *parse* failure, never the "cannot represent … exactly" rounding
+/// wording.
 test "decimal wire: hex parsing rejects junk and over-wide input" {
   let f : DecimalFormat = Decimal32
   let junk = try {
     let _ = f.from_hex("78ZZ0000")
     "no error"
   } catch {
-    InexactConversion(msg) => msg
-    _ => "wrong error variant"
+    UnparsableInput(text, why) => "cannot parse '\{text}': \{why}"
+    InexactConversion(msg) =>
+      "rounding wording instead of a parse failure: \{msg}"
+    e => "wrong error variant: \{e.describe()}"
   }
-  inspect(junk.length() > 0, content="true")
+  inspect(junk, content="cannot parse '78ZZ0000': non-hex character")
   let wide = try {
     let _ = f.from_hex("7800000000000000")
     "no error"
