@@ -105,6 +105,85 @@ test "parse_decimal: an astronomically wide negative exponent saturates at Int64
 }
 
 ///|
+/// D1 (2026-11-13 audit, P2): the guard in `digits_to_int64` fired one digit too
+/// late, and the machine underneath it is what made that expensive.
+///
+/// The guard was `acc > Int64::max / 10` and was tested *before* folding a digit
+/// in, so the equality case slipped through: with `acc == 922337203685477580` a
+/// last digit of `8` or `9` computes `acc * 10 + d`, which is `2^63` / `2^63 + 1`
+/// — past `Int64::max`. Two's-complement wrap takes it to `Int64::min` /
+/// `Int64::min + 1`, and from there `acc * 10` is `0` (or `10`) mod `2^64`, so the
+/// *remaining* digits fold into a small number and no later guard can fire.
+///
+/// Consequences, both reproduced below:
+///
+///   - `1e9223372036854775808` reported `exponent -9223372036854775808`, i.e. the
+///     opposite sign from the one the user typed, contradicting the saturation
+///     contract (`API.md` §8: report `Int64::MAX` for a positive exponent);
+///   - `1e92233720368547758080` **parsed successfully** as `1` at exponent `0`. A
+///     nonzero literal two orders of magnitude past the container became a plain
+///     `1`, silently — the one outcome `parse_decimal` is not allowed to produce
+///     (PLAN.md §1.2: never silently correct a non-canonical input).
+///
+/// The old tests could not see it because they used all-`9` exponents, where the
+/// guard fires on the *first* digit of the overflow and never reaches the edge.
+test "parse_decimal: a magnitude past Int64 saturates, it never wraps into a value" {
+  // One past Int64::max. The sign of the report follows the input's own sign.
+  let pos = try {
+    let _ = parse_decimal("1e9223372036854775808")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    pos.contains(
+      "exponent 9223372036854775807 out of range [-2147483648, 2147483647]",
+    ),
+    content="true",
+  )
+  let neg = try {
+    let _ = parse_decimal("1e-9223372036854775809")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    neg.contains(
+      "exponent -9223372036854775808 out of range [-2147483648, 2147483647]",
+    ),
+    content="true",
+  )
+  // The silent-acceptance half: 20 digits whose 19-digit prefix is exactly
+  // `Int64::max + 1`. Before the fix this returned a Decimal (exponent 0).
+  let wrapped = try {
+    let v = parse_decimal("1e92233720368547758080")
+    "parsed as exponent \{v.exponent}"
+  } catch {
+    e => e.describe()
+  }
+  inspect(wrapped.contains("out of range"), content="true")
+  let wrapped_neg = try {
+    let v = parse_decimal("1e-92233720368547758080")
+    "parsed as exponent \{v.exponent}"
+  } catch {
+    e => e.describe()
+  }
+  inspect(wrapped_neg.contains("out of range"), content="true")
+  // Exactly `Int64::max` still saturates upward rather than being refused as a
+  // *lexical* problem: the magnitude fits, the container does not.
+  let exact = try {
+    let _ = parse_decimal("1e9223372036854775807")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    exact.contains("exponent 9223372036854775807 out of range"),
+    content="true",
+  )
+}
+
+///|
 /// The check must not reject exponents the container can legitimately hold: every
 /// `dectest`-style triple still parses to the same exponent it always did.
 test "parse_decimal: in-range exponents still parse unchanged" {

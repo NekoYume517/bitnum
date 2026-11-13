@@ -369,12 +369,12 @@ fn strip_trailing_zeros(v : BigInt) -> BigInt {
 /// anything else), so the only remaining concern is magnitude, and an explicit
 /// bound says what happened instead of surfacing a library-specific error.
 ///
-/// The bound is `Int64::max / 10`, not `Int32::max`, because the magnitude and the
-/// signed value have different ranges: `1e-2147483648` has an `Int32`-sized
-/// magnitude whose negation is exactly `Int32::min`, and that is a value the triple
-/// can hold. Only the *signed sum* is checked against `Int32`, so the scanner stays
-/// as permissive as the container and the single, honest rejection comes from the
-/// arithmetic the audit found broken (BN-B3).
+/// The bound is `Int64`, not `Int32`, because the magnitude and the signed value have
+/// different ranges: `1e-2147483648` has an `Int32`-sized magnitude whose negation is
+/// exactly `Int32::min`, and that is a value the triple can hold. Only the *signed
+/// sum* is checked against `Int32`, so the scanner stays as permissive as the
+/// container and the single, honest rejection comes from the arithmetic the audit
+/// found broken (BN-B3).
 ///
 /// `negative` is the input's own exponent sign. When the magnitude is too wide even
 /// for `Int64` the report **saturates** to `Int64::MIN` / `Int64::MAX` with that
@@ -384,13 +384,21 @@ fn strip_trailing_zeros(v : BigInt) -> BigInt {
 /// container, and the test that locked it only asserted "no minus sign", which ruled
 /// out negative lower bounds for the wrong reason.
 fn digits_to_int64(text : String, negative : Bool) -> Int64 raise BitnumError {
-  // Int64::max / 10, so folding one more digit in cannot wrap.
-  let limit : Int64 = 922337203685477580L
+  // The overflow test is written against the digit being folded in, not against a
+  // constant: `acc * 10 + d > Int64::max` holds exactly when
+  // `acc > (Int64::max - d) / 10`, and `d` is already in hand at the only place the
+  // question can be asked. The earlier form compared `acc` with `Int64::max / 10`
+  // *before* the fold, which is one too loose at the edge: `acc == 922337203685477580`
+  // with `d == 8` computes `2^63`, wrapping to `Int64::min` — and from there the
+  // remaining digits fold into a small number (`min * 10 == 0` mod `2^64`), so
+  // `1e92233720368547758080` parsed as exponent `0` instead of being rejected, and
+  // `1e9223372036854775808` reported the input's sign inverted.
   let mut acc : Int64 = 0L
   for i in 0..<text.length() {
     let c = text.get_char(i).unwrap()
     let d = Int64::from_int(c.to_int() - '0'.to_int())
-    if acc > limit {
+    let room = (9223372036854775807L - d) / 10L
+    if acc > room {
       // Far past `Int64`: saturate to the signed end of what the report can carry.
       let saturated = if negative {
         -9223372036854775807L - 1L
