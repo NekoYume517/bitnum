@@ -241,7 +241,7 @@ pub(all) struct FloatConversion {
 
 ```
 $ moon test
-Total tests: 96, passed: 96, failed: 0.
+Total tests: 105, passed: 105, failed: 0.
 ```
 
 ## 证据
@@ -262,7 +262,7 @@ DPD triple round-trip failures: 0 / 1000
 $ python scripts/float_ref.py
 numpy cross-check (nearest_even): compared=19988 mismatch=0
 torch cross-check (bf16 nearest_even): compared=4973 mismatch=0
-wrote examples\vectors-binary16.tsv (965 rows)
+wrote examples\vectors-binary16.tsv (990 rows)
 ```
 
 三份独立实现（精确整数参考、numpy 的 binary16、torch 的 bfloat16）逐位吻合。
@@ -285,7 +285,7 @@ cmd/bitnum/
   main.mbt          CLI：value / bits / table / check
 examples/
   vectors-decimal.tsv   568 条 dectest 权威向量
-  vectors-binary16.tsv  965 条交叉核对向量
+  vectors-binary16.tsv  990 条交叉核对向量
 scripts/
   decimal_ref.py    DPD 参考实现（对 dectest 全绿），零共享代码
   float_ref.py      二进制参考实现（精确整数 + numpy/torch 交叉），零共享代码

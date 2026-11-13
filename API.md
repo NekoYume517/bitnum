@@ -478,6 +478,7 @@ payload；`inf` / `Infinity` 精确，无说明。
 注意 `-nan` 的**符号会被丢掉**（得 `0x7E00` 而非 `0xFE00`）：符号前缀由 CLI 交给
 core 的 `parse_double`，而它在解析时就丢弃了 NaN 的符号位。这是当前实测行为，
 `lexical_wbtest.mbt` 按现状锁定；`±Infinity` 不受影响（符号自己解析）。
+bfloat16 同理（`-nan` 得 `7FC0` 而非 `FFC0`），因为两条路径共用同一个读取器。
 
 该接受集由 `cmd/bitnum/lexical_wbtest.mbt` 逐条锁定（接受 / 拒绝各一组断言），
 防止任一侧词法器改动后文档再次飘移。

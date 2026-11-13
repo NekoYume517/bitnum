@@ -5,29 +5,33 @@
 >
 > 环境：
 > ```
-> $env:MOON_HOME="E:\moonbit\home"; $env:Path="E:\moonbit\home\bin;"+$env:Path
-> moon 0.1.20261016 (1af328f 2026-10-16)
-> moonc v0.10.16+b1a0e846e (2026-10-16)
+> $env:MOON_HOME="D:\code\moonbit\audit\toolchain\x"; $env:Path="D:\code\moonbit\audit\toolchain\x\bin;"+$env:Path
+> moon 0.1.20261102 (ea07287 2026-11-02)
+> moonc v0.10.19+bee578715 (2026-11-02)
 > ```
 
 ## 0. 门禁
 
 ```
 $ moon check
-Finished. moon: ran 4 tasks, now up to date (0 warnings, 0 errors)
+Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 63, passed: 63, failed: 0.
+Total tests: 105, passed: 105, failed: 0.
 
 $ moon build --target wasm
-Finished. moon: ran 2 tasks, now up to date
+Artifacts:
+Finished. moon: no work to do
 
 $ moon fmt
-Finished. moon: ran 21 tasks, now up to date
+Finished. moon: ran 31 tasks, now up to date
 
 $ moon fmt --check
-Finished. moon: ran 21 tasks, now up to date
+Finished. moon: ran 31 tasks, now up to date
 ```
+
+（`ran N tasks` 里的数字随缓存状态变化：全新 clone 上是几十个任务，增量时是 `no work
+to do`。这里记的是本轮收尾那次运行的真实输出。）
 
 **`moon fmt --check` 必须先跑一次 `moon fmt`**，顺序不能反。`--check` 的实现是把源码
 和 `_build/<target>/release/format/` 下的格式化副本做 `git diff --no-index`；
@@ -64,7 +68,7 @@ DPD triple round-trip failures: 0 / 1000
 $ python scripts/float_ref.py
 numpy cross-check (nearest_even): compared=19988 mismatch=0
 torch cross-check (bf16 nearest_even): compared=4973 mismatch=0
-wrote examples\vectors-binary16.tsv (965 rows)
+wrote examples\vectors-binary16.tsv (990 rows)
 ```
 
 - `numpy` 的 `float16` 走的是平台自己的 IEEE 转换，19988 条随机 binary64 输入**逐位一致**。
@@ -246,6 +250,22 @@ exit=0
 说明里写 `binary32` 而不是 `binary64`：越界的是第二级容器，binary64 那一档是好的。
 边界按第一次窄化的**实际结果**判定，不是按量级阈值 —— `3.4028235e38` 比
 `0x7F7FFFFF` 略大却仍被就近舍回它，阈值比较在那一点上会误报。
+
+同一处窄化的**下溢端**现在也有说明（D3，修复自 2026-11-13 审计）。`1e-46` 是
+合法的 binary64，却在 `Double → Float` 这一步就被舍成零；`of_f32` 收到的已经是
+精确零，`inexact` 为 false，所以修复前它输出 `0000`、exit 0、**stderr 空** ——
+与 `bits bfloat16 0` 逐字节相同：
+
+```
+$ bitnum bits bfloat16 1e-46
+0000
+bitnum: note: '1e-46' is too small for binary32; rounded to zero (inexact)
+exit=0
+```
+
+判据同样落在「第一次窄化实际产生了什么」上（非零字面量 + 窄化结果为 ±0），
+符号照旧保真（`-1e-46` → `8000`）。已经在 binary64 就舍成零的 `1e-999` 仍走
+上一节的 `too small for binary64` —— 两条诊断发生在不同阶段，措辞按越界的那一级写。
 
 修复前这三类输入**一律**输出 `0000`、`exit 0`、无任何 stderr —— 一个拒绝的字面量
 伪装成一个合法的 `+0`。这两个状态在 hex 上无法区分，所以回归测试断言的是退出码与
@@ -466,6 +486,17 @@ bitnum: coefficient has 8 decimal digits, this format holds 7
 exit=1
 ```
 
+系数比容器宽得多时（199 位以上）报的仍然是**系数**，不是指数（D4，修复自
+2026-11-13 审计）。修复前这一档会把按位数收紧的指数上限
+（`Emax - (位数 - 1)`，199 位时是 `-102`）当作越界原因，给出下界大于上界的
+倒挂区间 `exponent 0 out of range [-101, -102]`：
+
+```
+$ bitnum bits decimal32 111…1        # 199 个 1
+bitnum: coefficient has 199 decimal digits, this format holds 7
+exit=1
+```
+
 ```
 $ bitnum bits decimal32 9999999E+96
 bitnum: exponent 96 out of range [-101, 90]
@@ -523,10 +554,10 @@ exit=0
 
 ```
 $ moon test
-Total tests: 63, passed: 63, failed: 0.
+Total tests: 105, passed: 105, failed: 0.
 ```
 
-63 条测试的覆盖规模（不是"63 个断言"，是 63 条测试里有几条是穷举）：
+105 条测试的覆盖规模（不是"105 个断言"，是 105 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
