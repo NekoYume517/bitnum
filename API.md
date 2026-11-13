@@ -298,6 +298,19 @@ CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex d
 低于满精度时组合字段上限赢 —— 所以 `dectest` 把 `0e+10000` 钳到
 `0E+90 / 0E+369 / 0E+6111`，而不是钳到 `Emax`。
 
+**系数宽度先于「按位数收紧的指数上限」判定**（D4，修复自 2026-11-13 审计）。
+两个障碍彼此独立，但只有一个是「装不下」的真正原因：系数比容器宽时任何指数都
+救不了它，而派生的上限 `Emax - (nd - 1)` 会随位数一路下沉 —— 199 位时是 `-102`，
+比 `Etiny` 还低，于是修复前报出的是**倒挂的**区间：
+
+```
+exponent 0 out of range [-101, -102]          # 修复前：区间为空，且在怪指数
+coefficient has 199 decimal digits, this format holds 7   # 修复后
+```
+
+偏置指数域那道门（`ExponentOutOfRange`）仍在最前面，保持不变：指数连槽位都放不下
+时，那才是第一个该说的事实。
+
 **NaN 布局是二进制直觉的反面**。NaN 时组合字段是 `11111`，其下一位是 **signaling 标志**
 （`0` = quiet），再往下才是诊断 payload。`ddEncode.decTest` 直接钉死：
 

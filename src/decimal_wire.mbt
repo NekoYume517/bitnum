@@ -374,6 +374,17 @@ pub fn DecimalFormat::encode_raw(
         value.coefficient.to_string(radix=10)
       }
       let nd = if digits_text.length() == 0 { 1 } else { digits_text.length() }
+      // The coefficient width is checked *before* the exponent ceiling, because the
+      // two are independent obstacles and only one of them can be the reason a datum
+      // does not fit. When the coefficient is wider than the container no exponent
+      // can rescue it, while the derived ceiling `Emax - (nd - 1)` keeps sinking as
+      // `nd` grows: at 199 digits it is `-102`, one below `Etiny`, so the exponent
+      // branch reported the inverted range `[-101, -102]` and blamed the exponent
+      // for a coefficient problem (D4, 2026-11-13 audit).
+      let cap = self.digits()
+      if nd > cap {
+        raise CoefficientTooLarge(nd, cap)
+      }
       let exp_limit = self.max_exponent_for(value.coefficient)
       if value.exponent > exp_limit {
         // The value being reported is the *true* exponent and the bounds are true
@@ -393,10 +404,6 @@ pub fn DecimalFormat::encode_raw(
         let comb = exp_top << 3
         sign_bit + (BigInt::from_int(comb) << comb_shift) + exp_field
       } else {
-        let cap = self.digits()
-        if nd > cap {
-          raise CoefficientTooLarge(nd, cap)
-        }
         // Left-pad to `cap` digits. The padding is *leading*, which is what the
         // format has room for: trailing zeros belong to the exponent, and adding
         // them would change the triple rather than widen the container.
