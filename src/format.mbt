@@ -25,9 +25,8 @@ pub fn describe_binary16(bits : UInt16) -> String {
     sb.write_string(" (nan)")
   }
   sb.write_string("  significand=\{d.significand}\n")
-  sb.write_string(
-    "kind=\{datum_class_label(d.kind)}  value=\{format_double(d.to_f64())}",
-  )
+  let value_text = nan_value_text(d.kind, d.sign, d.to_f64())
+  sb.write_string("kind=\{datum_class_label(d.kind)}  value=\{value_text}")
   sb.write_string(annotate_binary16(d))
   sb.to_string()
 }
@@ -62,6 +61,12 @@ fn annotate_binary16(d : Binary16) -> String {
 
 ///|
 /// Field breakdown for bfloat16.
+///
+/// The annotation set mirrors `describe_binary16` on purpose: the `value`
+/// command must diagnose the same datum the same way in both binary containers.
+/// The value line also keeps a negative NaN's sign (`-NaN`), matching the
+/// decimal renderer — `Double::to_string` has no sign for NaN, and dropping it
+/// here would make `value` the one place the wire's sign bit disappears.
 pub fn describe_bfloat16(bits : UInt16) -> String {
   let d = BFloat16::decode(bits)
   let sb = StringBuilder()
@@ -78,15 +83,51 @@ pub fn describe_bfloat16(bits : UInt16) -> String {
     sb.write_string(" (nan)")
   }
   sb.write_string("  significand=\{d.significand}\n")
-  sb.write_string(
-    "kind=\{datum_class_label(d.kind)}  value=\{format_double(d.to_f64())}",
-  )
-  if d.kind == Subnormal && d.significand == 1 {
-    sb.write_string("   (2^-133)")
-  } else if d.kind == Normal && d.significand == 0 && d.exponent == 127 {
-    sb.write_string("   (2^0)")
-  }
+  let value_text = nan_value_text(d.kind, d.sign, d.to_f64())
+  sb.write_string("kind=\{datum_class_label(d.kind)}  value=\{value_text}")
+  sb.write_string(annotate_bfloat16(d))
   sb.to_string()
+}
+
+///|
+/// The annotation set for bfloat16, mirroring `annotate_binary16`: negative
+/// zero, infinities, the min subnormal, and exact powers of two. The value
+/// text itself renders -0.0 as "0" (`Double::to_string` drops the sign), so
+/// the `(-0)` annotation is what keeps negative zero visible in `value`.
+fn annotate_bfloat16(d : BFloat16) -> String {
+  if d.kind == Zero {
+    if d.sign == 1 {
+      "   (-0)"
+    } else {
+      "   (0)"
+    }
+  } else if d.kind == Subnormal && d.significand == 1 {
+    "   (2^-133)"
+  } else if d.kind == Normal && d.significand == 0 {
+    "   (2^\{d.exponent - 127})"
+  } else if d.kind == Infinity {
+    if d.sign == 1 {
+      "   (-infinity)"
+    } else {
+      "   (infinity)"
+    }
+  } else {
+    ""
+  }
+}
+
+///|
+/// The value text for a decoded datum whose exact double is a NaN. `format_double`
+/// prints "NaN" with no sign, which made `value` report `value=NaN` for a
+/// negative NaN in both binary formats while decimal printed `-NaN` — the one
+/// line where the wire's sign bit went missing. The sign lives in the decoded
+/// field, so it is applied here rather than extracted from the double.
+fn nan_value_text(kind : FloatClass, sign : Int32, exact : Double) -> String {
+  if kind == Nan && sign == 1 {
+    "-NaN"
+  } else {
+    format_double(exact)
+  }
 }
 
 ///|
