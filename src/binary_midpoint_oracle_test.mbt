@@ -1,13 +1,17 @@
 ///|
-/// TEMPORARY AUDIT PROBE (Lead, 2026-11-12) — delete before committing.
+/// Exhaustive midpoint oracle for the two binary formats, kept permanently
+/// after its 2026-11-12 audit round (the header once read "TEMPORARY AUDIT
+/// PROBE — delete before committing"; the 2026-11-13 audit cites it as
+/// standing coverage, so the temporary label was stale and the "PROBE" test
+/// names claimed a status the file does not have).
 ///
-/// Exhaustive midpoint oracle for the two binary formats. It never consults a
-/// reference implementation: for every pair of adjacent representable values
-/// `(a, b)` the exact midpoint `(a + b) / 2` is representable in the wider
-/// format (binary16 needs 12 significand bits, binary64 has 53; bfloat16 needs
-/// 9, binary32 has 24), so IEEE 754-2008 §4.3 fixes every directed result and
-/// the ties-to-even rule fixes the nearest one. `next_down(mid)` / `next_up(mid)`
-/// pin the same seam one binary64 ulp away, where no tie is involved.
+/// It never consults a reference implementation: for every pair of adjacent
+/// representable values `(a, b)` the exact midpoint `(a + b) / 2` is
+/// representable in the wider format (binary16 needs 12 significand bits,
+/// binary64 has 53; bfloat16 needs 9, binary32 has 24), so IEEE 754-2008 §4.3
+/// fixes every directed result and the ties-to-even rule fixes the nearest
+/// one. `next_down(mid)` / `next_up(mid)` pin the same seam one binary64 ulp
+/// away, where no tie is involved.
 
 ///|
 fn next_up_d(x : Double) -> Double {
@@ -34,7 +38,7 @@ fn next_down_d(x : Double) -> Double {
 }
 
 ///|
-test "PROBE binary16 midpoint oracle: every gap, both signs, five modes" {
+test "binary16 midpoint oracle: every gap, both signs, five modes" {
   let modes : Array[RoundingMode] = [
     NearestEven,
     NearestAway,
@@ -141,7 +145,7 @@ fn next_down_f(x : Float) -> Float {
 }
 
 ///|
-test "PROBE bfloat16 midpoint oracle: every gap, both signs, five modes" {
+test "bfloat16 midpoint oracle: every gap, both signs, five modes" {
   let modes : Array[RoundingMode] = [
     NearestEven,
     NearestAway,
