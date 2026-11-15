@@ -59,8 +59,14 @@ pub fn Decimal::make(
   exponent : Int32,
 ) -> Decimal raise BitnumError {
   if coefficient.compare_int(0) < 0 {
+    // The payload must be a noun phrase: `describe()` wraps it in
+    // "cannot represent … exactly", so a full sentence here grows an adverb
+    // on its last word ("… lives in `negative` exactly"). This is the same
+    // malformation BN-B9 removed from the lexical branch — a semantic
+    // rejection keeps the rounding wrapper, but what it wraps has to complete
+    // the sentence, not carry one of its own.
     raise InexactConversion(
-      "negative coefficient: the sign of a Decimal lives in `negative`",
+      "a negative coefficient (the sign lives in `negative`)",
     )
   }
   Decimal::{ negative, coefficient, exponent, kind: DFinite, }

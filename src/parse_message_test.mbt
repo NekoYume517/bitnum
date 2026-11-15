@@ -81,6 +81,28 @@ test "decimal: a semantic rejection still says it cannot represent exactly" {
 }
 
 ///|
+/// The negative-coefficient payload must be a noun phrase, not a sentence.
+/// `describe()` wraps the fragment in "cannot represent … exactly", so a full
+/// sentence inside the field used to come out as
+/// "cannot represent negative coefficient: the sign of a Decimal lives in
+/// `negative` exactly" — a sentence with an adverb bolted onto its last word,
+/// the same malformation BN-B9 removed from the lexical branch. The fix keeps
+/// the variant (a negative coefficient *is* a value the API understands and
+/// refuses) and makes the payload a noun phrase so the wrapper completes it.
+test "decimal: the negative-coefficient rejection reads as one sentence" {
+  let msg = try {
+    let _ = Decimal::make(false, BigInt::from_int(-1), 0)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    msg,
+    content="cannot represent a negative coefficient (the sign lives in `negative`) exactly",
+  )
+}
+
+///|
 /// `from_hex` had the same wrapper on its own lexical failure. A non-hex character
 /// means the string could not be read as wire bits at all.
 test "from_hex: a non-hex character is a parse failure, not a rounding" {
