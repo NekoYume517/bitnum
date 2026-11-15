@@ -435,13 +435,21 @@ pub fn DecimalFormat::encode_raw(
 
 ///|
 /// Validate a NaN payload and return it as a BigInt.
+///
+/// A *negative* payload is not a width question — the old path raised
+/// `NanPayloadTooLarge(-1, cap)` and described a payload that "needs -1 bits",
+/// a number nobody requested. It is a value the API understands and cannot
+/// represent, so by the BN-B9 split it is a semantic rejection worded as
+/// `InexactConversion`; the genuine width case below keeps its variant.
 fn DecimalFormat::check_payload(
   self : DecimalFormat,
   payload : BigInt,
 ) -> BigInt raise BitnumError {
   let cap = self.nan_payload_bits()
   if payload.compare_int(0) < 0 {
-    raise NanPayloadTooLarge(-1, cap)
+    raise InexactConversion(
+      "a negative NaN payload (payloads are non-negative)",
+    )
   }
   if payload.compare(BigInt::from_int(1) << cap) >= 0 {
     raise NanPayloadTooLarge(payload.bit_length(), cap)

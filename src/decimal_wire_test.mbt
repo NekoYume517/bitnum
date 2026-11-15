@@ -295,6 +295,40 @@ test "decimal wire: exponent outside the biased range is rejected with bounds" {
 }
 
 ///|
+/// A negative payload is not a *width* problem. The old path raised
+/// `NanPayloadTooLarge(-1, cap)`, so the message read "NaN payload needs -1
+/// bits, container holds 25" — a width nobody requested, produced by feeding
+/// the sentinel -1 into a wording that expects a bit count. A negative payload
+/// is a value the API understands and cannot represent: by the BN-B9 split
+/// that is a semantic rejection, worded as `InexactConversion` with a noun
+/// phrase the "cannot represent … exactly" wrapper can complete.
+test "decimal wire: a negative NaN payload is named as a value, not a width" {
+  let f : DecimalFormat = Decimal32
+  let v = Decimal::nan(false, BigInt::from_int(-1))
+  let msg = try {
+    let _ = f.encode_raw(v)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    msg,
+    content="cannot represent a negative NaN payload (payloads are non-negative) exactly",
+  )
+  // The genuine width rejection keeps its variant and its numbers.
+  let too_wide = Decimal::nan(false, BigInt::from_int(1) << 25)
+  let width_msg = try {
+    let _ = f.encode_raw(too_wide)
+    "no error"
+  } catch {
+    NanPayloadTooLarge(width, capacity) =>
+      "width \{width}, capacity \{capacity}"
+    _ => "wrong error variant"
+  }
+  inspect(width_msg, content="width 26, capacity 25")
+}
+
+///|
 test "decimal wire: NaN payload wider than the container is rejected" {
   let f : DecimalFormat = Decimal32
   let too_big = BigInt::from_int(1) << 25
