@@ -324,3 +324,29 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
 三条的回归都不靠抽样：D1 钉在 `Int64` 边界两侧、D3 钉在「窄化前非零 / 窄化后零」
 这一个谓词的两侧（并守住相邻的两种诊断不被吃掉）、D4 钉在 198/199 位这道
 区间翻转的分界上。
+
+## 12. 2026-11-15 的三条：渲染口径、病句与过期的临时标记
+
+- **`value` 行的口径在两种二进制格式之间漂移。** `Double::to_string` 对 -0.0
+  渲染 `0`、对 NaN 无符号 —— 这本身不是 bug，但它把「保留符号」的责任推给了
+  渲染层，而渲染层只在 binary16 上接住了：binary16 有 `(-0)` / `(±infinity)`
+  注释，bfloat16 一条都没有，于是 `value bfloat16 8000` 打 `value=0` 且无注释，
+  与 +0 在 value 行无法区分；两个二进制格式的负 NaN 都打 `value=NaN`，而
+  decimal 渲染 `-NaN`。同语义输入在五种格式里读起来不一样，是口径漂移不是
+  格式差异 —— 修法是镜像 binary16 的注释集到 bfloat16、value 行对 sign=1 的
+  NaN 渲染 `-NaN`，正值输出逐字符不变。
+- **`InexactConversion` 的 payload 又装进了完整句子。** BN-B9 的规则是
+  「外壳补全句子，所以片段必须是名词短语」，但 `Decimal::make` 的负系数
+  payload 是一整句 —— 包上外壳后句尾多出 exactly，和 BN-B9 修掉的病句同构。
+  负 NaN payload 走得更远：`NanPayloadTooLarge(-1, cap)` 把哨兵值喂给按位数
+  措辞的变体，报出 "needs -1 bits" 这个没人请求过的宽度。两条都改成名词短语
+  （负 payload 改走语义变体），宽度越界分支原样保留。
+- **两族公共路径只在一个格式上锁定。** D4 的「超宽系数先报系数」和指数
+  越界的两个变体都在 `encode_raw` 的格式无关代码里，回归断言却只写在
+  decimal32 上；CLI 探针证实 decimal64/128 行为一致后，探针结果固化成
+  `exponent_family_test.mbt`。教训与 2026-11-13 轮相同：**一族 bug 只锁一个
+  格式等于没锁**，这次是测试侧的同款缺口。
+- 顺带：`binary_midpoint_oracle_test.mbt` 的头还写着 "TEMPORARY AUDIT PROBE
+  — delete before committing"，而它已是上一轮收编的永久 oracle —— 过期的
+  临时标记是一个「随时可删」的错误指引，已改为身份说明并去掉测试名的
+  PROBE 前缀。

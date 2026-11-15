@@ -341,6 +341,13 @@ pub fn pad_right(String, Int) -> String
 这一层只服务诊断：编解码器不依赖它，任何往返声明也不建立在它上面（PLAN.md §0）。
 它存在的理由是让 `bitnum value` 能打印**为什么**一个模式是这个值，而不只是那个数。
 
+`describe_binary16` 与 `describe_bfloat16` 的注释集**逐项镜像**（`(-0)` / `(0)` /
+`(±infinity)` / 最小次正规 / `2^k`），且两个格式的 value 行对 sign=1 的 NaN 都渲染
+`-NaN` —— 十进制侧对同一语义渲染 `-NaN` / `-sNaN`，五种格式的 `value` 输出口径
+一致（2026-11-15 统一，`src/describe_render_test.mbt` 锁定）。value 文本来自
+`format_double`，而 `Double::to_string` 对 -0.0 渲染 `0`、对 NaN 无符号，所以
+-0 靠注释保真、负 NaN 的符号在 value 行单独补。
+
 ## 8. 错误 `src/error.mbt`
 
 ```moonbit
@@ -404,6 +411,19 @@ exponent -9223372036854775808 out of range [-2147483648, 2147483647]    # 1e-999
 decimal point: 1.2.3 exactly` 这类既不成立也读不通的句子。`UnparsableInput` 的第二个
 字段是拒绝原因（`no digits` / `sign with no digits` / …），整句由 `describe()` 组织，
 所以没有任何片段需要充当某个句子的语法成分。
+
+**语义分支的两条 payload 也必须是名词短语**（2026-11-15 审计）：负系数与负 NaN
+payload 都是「看得懂但装不下」，走 `InexactConversion`，payload 由外壳补全成整句：
+
+```
+cannot represent a negative coefficient (the sign lives in `negative`) exactly
+cannot represent a negative NaN payload (payloads are non-negative) exactly
+```
+
+修复前前者把完整句子当 payload（"… the sign of a Decimal lives in `negative`
+exactly"，句尾被外壳拼上 exactly），后者走 `NanPayloadTooLarge(-1, cap)` 报
+"needs -1 bits" —— 把哨兵值喂给了按位数措辞的变体。宽度越界的 payload 保持
+原变体与原数字（`NaN payload needs 26 bits, container holds 25`）。
 
 ## 9. CLI `cmd/bitnum/main.mbt`
 

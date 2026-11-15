@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 105, passed: 105, failed: 0.
+Total tests: 113, passed: 113, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -116,6 +116,30 @@ kind=nan  value=NaN
 $ bitnum value decimal32 7F7FFFFF
 sign=0  payload=25165823
 kind=signaling-nan  value=sNaN
+```
+
+`value` 行的注释集与符号在两种二进制格式上逐项一致（2026-11-15 统一口径）：
+bfloat16 的 -0 与 ±Infinity 现在也带 binary16 同款注释，负 NaN 的 value 行
+渲染 `-NaN`，与十进制侧的 `-NaN` / `-sNaN` 同口径——修复前 bfloat16 打
+`value=0` 且无注释（与 +0 在 value 行无法区分），两个二进制格式的负 NaN
+都在 value 行丢符号：
+
+```
+$ bitnum value bfloat16 8000
+sign=1  exponent=0 (zero)  significand=0
+kind=finite  value=0   (-0)
+```
+
+```
+$ bitnum value bfloat16 FF80
+sign=1  exponent=255 (infinity)  significand=0
+kind=infinity  value=-Infinity   (-infinity)
+```
+
+```
+$ bitnum value binary16 FE01
+sign=1  exponent=31 (nan)  significand=513
+kind=nan  value=-NaN
 ```
 
 注意 `kind=finite` 用在次正规数上：`FloatClass` 区分 `Subnormal`，但 IEEE 754-2008
@@ -554,16 +578,17 @@ exit=0
 
 ```
 $ moon test
-Total tests: 105, passed: 105, failed: 0.
+Total tests: 113, passed: 113, failed: 0.
 ```
 
-105 条测试的覆盖规模（不是"105 个断言"，是 105 条测试里有几条是穷举）：
+113 条测试的覆盖规模（不是"113 个断言"，是 113 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
 | binary16 decode→encode | 全部 **65536** 个位模式 |
 | binary16 f64 往返 | 全部 65536（NaN payload 单独说明） |
 | binary16 类分布 | 2 / 2046 / 61440 / 2 / 2046 |
+| 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
 | bfloat16 同上 | 全部 **65536** |
 | DPD 三元组往返 | 全部 **1000** |
 | DPD 码空间 | 全部 **1024**（含 24 冗余） |

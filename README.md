@@ -235,13 +235,14 @@ pub(all) struct FloatConversion {
 | bfloat16 decode→encode / 加宽 | 全部 **65536** |
 | DPD 三元组往返 + 注入性 | 全部 **1000** |
 | DPD 码空间（含 24 冗余） | 全部 **1024** |
+| 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
 | 十进制权威向量 | **568**（496 精确 + 72 冗余） |
 | 舍入模式 | 5 种 × 向量表 |
 | 错误分支 | 每条至少一个测试 |
 
 ```
 $ moon test
-Total tests: 105, passed: 105, failed: 0.
+Total tests: 113, passed: 113, failed: 0.
 ```
 
 ## 证据
