@@ -76,3 +76,14 @@ test "describe: binary16 value lines stay byte-for-byte as documented" {
       "kind=finite  value=0   (-0)",
   )
 }
+
+///|
+/// The public value-text helpers are rendering entry points too, not just the
+/// `describe_*` functions used by the CLI. They receive the original wire bits,
+/// so they can and must preserve a negative NaN's sign just as `describe_*` does.
+test "value text helpers preserve a binary NaN's sign" {
+  inspect(binary16_value_text(0xFE01), content="-NaN")
+  inspect(bfloat16_value_text(0xFFC1), content="-NaN")
+  inspect(binary16_value_text(0x7E01), content="NaN")
+  inspect(bfloat16_value_text(0x7FC1), content="NaN")
+}

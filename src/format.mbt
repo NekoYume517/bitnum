@@ -246,13 +246,15 @@ fn find_exponent_marker(text : String) -> Int32 {
 /// command: exact means "shortest decimal that round-trips", which is what
 /// `to_string` on a Double already gives for a value this narrow.
 pub fn binary16_value_text(bits : UInt16) -> String {
-  format_double(Binary16::decode(bits).to_f64())
+  let d = Binary16::decode(bits)
+  nan_value_text(d.kind, d.sign, d.to_f64())
 }
 
 ///|
 /// The value of a bfloat16 pattern, as text.
 pub fn bfloat16_value_text(bits : UInt16) -> String {
-  format_double(BFloat16::decode(bits).to_f64())
+  let d = BFloat16::decode(bits)
+  nan_value_text(d.kind, d.sign, d.to_f64())
 }
 
 ///|
