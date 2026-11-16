@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 113, passed: 113, failed: 0.
+Total tests: 116, passed: 116, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -116,6 +116,14 @@ kind=nan  value=NaN
 $ bitnum value decimal32 7F7FFFFF
 sign=0  payload=25165823
 kind=signaling-nan  value=sNaN
+```
+
+Infinity 没有诊断 payload，所以第一行只有符号；payload 行专属于 NaN / sNaN：
+
+```
+$ bitnum value decimal32 78000000
+sign=0
+kind=infinity  value=Infinity
 ```
 
 `value` 行的注释集与符号在两种二进制格式上逐项一致（2026-11-15 统一口径）：
@@ -484,6 +492,20 @@ bitnum: cannot parse '+': sign with no digits
 exit=1
 ```
 
+裸指数标记与实际写了符号是两种定位，不会给 `1e` 虚构一个符号：
+
+```
+$ bitnum bits decimal64 1e
+bitnum: cannot parse '1e': exponent with no digits
+exit=1
+```
+
+```
+$ bitnum bits decimal64 1e+
+bitnum: cannot parse '1e+': exponent sign with no digits
+exit=1
+```
+
 `from_hex` 的非 hex 字符走同一个变体：
 
 ```
@@ -578,10 +600,10 @@ exit=0
 
 ```
 $ moon test
-Total tests: 113, passed: 113, failed: 0.
+Total tests: 116, passed: 116, failed: 0.
 ```
 
-113 条测试的覆盖规模（不是"113 个断言"，是 113 条测试里有几条是穷举）：
+116 条测试的覆盖规模（不是"116 个断言"，是 116 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|

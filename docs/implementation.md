@@ -350,3 +350,27 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
   — delete before committing"，而它已是上一轮收编的永久 oracle —— 过期的
   临时标记是一个「随时可删」的错误指引，已改为身份说明并去掉测试名的
   PROBE 前缀。
+
+## 13. 2026-11-16：公开渲染的镜像缺口与指数错误定位
+
+- **负 NaN 修复曾只覆盖 `describe_*`。** 公开的 `binary16_value_text` 与
+  `bfloat16_value_text` 仍直接经过 `format_double`，所以 `0xFE01` / `0xFFC1`
+  显示成无符号 `NaN`。两个 helper 现在也使用原始位型中的 sign/kind；另用
+  原始位域作独立判据，对两种格式的 2308 个 zero/Infinity/NaN 公开渲染结果
+  逐项对拍，0 失配。
+- **decimal Infinity 被印上了 NaN 才有的 `payload=0`。** `describe_decimal`
+  把 Infinity 与两种 NaN 放在同一个通配分支，虚构了格式里不存在的诊断字段。
+  现在 Infinity 只打印 sign/value，NaN 与 sNaN 保持 payload；三种宽度均有
+  Infinity 断言，decimal128 另有 NaN 对照。
+- **裸指数标记被误报为「指数符号缺数字」。** `1e` / `1.e` 没有指数符号，
+  旧路径却与 `1e+` / `1e-` 共用 `exponent sign with no digits`。现在先处理
+  裸 marker，再消费可选符号；五种拼写均有精确消息回归，CLI 仍为 exit 1。
+- **独立 oracle 排除自证。** Cowlishaw 八分类编码表加独立冗余映射对拍全部
+  1024 个 DPD 码；独立位域公式对拍 1152 个 combination/符号/续域组合；
+  Python 任意精度整数对拍 360 个三宽度系数/指数编码边界，Python `Decimal`
+  对拍 9 个 Int32 极值解析/渲染成功案例（另有 5 个越界拒绝）。四组均 0
+  失配。CLI 另跑 39 条 stdout/stderr/exit 矩阵，0 失配。临时探针已清理；
+  上述行为缺陷由永久回归测试锁定，既有穷举测试与 dectest 继续承担常规门禁。
+- **文档性质修正。** `numerically_equal` 对 `1.0` / `1.00` 比较数值而非
+  三元组同一性；非零值符号不同则不等，但 ±0 按数值相等。原 struct 的符号和
+  指数仍原样保留，这与既有测试一致，旧文字却笼统写成了「不忽略符号或指数」。

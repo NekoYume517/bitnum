@@ -196,9 +196,10 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
 一个比文法更宽容的解析器会让调用方错误和解码器缺陷无法区分。
 
-`numerically_equal` 忽略尾随零填充（`1.0` 与 `1.00` 数值相等）但**不**忽略符号或指数。
-标准把 `1.0` 和 `1.00` 当作不同三元组，本包也保持这个区分，所以两个比较函数都存在，
-没有一个叫裸 `equal`。
+`numerically_equal` 比较数值而非三元组同一性：忽略尾随零填充（`1.0` 与 `1.00`
+数值相等）；非零值的符号不同则不等，±0 按数值相等。标准把 `1.0` 和 `1.00`
+当作不同三元组，本包也在 `Decimal` 中原样保留符号、系数和指数，所以派生的 `Eq`
+与这个数值比较函数都存在，没有一个叫裸 `equal`。
 
 ## 5. DPD `src/dpd.mbt`
 
@@ -346,7 +347,12 @@ pub fn pad_right(String, Int) -> String
 `-NaN` —— 十进制侧对同一语义渲染 `-NaN` / `-sNaN`，五种格式的 `value` 输出口径
 一致（2026-11-15 统一，`src/describe_render_test.mbt` 锁定）。value 文本来自
 `format_double`，而 `Double::to_string` 对 -0.0 渲染 `0`、对 NaN 无符号，所以
--0 靠注释保真、负 NaN 的符号在 value 行单独补。
+-0 靠注释保真、负 NaN 的符号在 value 行单独补。公开的
+`binary16_value_text` / `bfloat16_value_text` 也使用同一条 sign-aware 路径，
+不是只有 `describe_*` 保留负 NaN 符号（2026-11-16 补齐镜像缺口）。
+
+`describe_decimal` 对 Infinity 只打印 sign 和 value；Infinity 没有诊断 payload。
+只有 NaN / sNaN 的第一行打印 `payload=…`，非规范 DPD 的附注规则不变。
 
 ## 8. 错误 `src/error.mbt`
 
@@ -410,7 +416,9 @@ exponent -9223372036854775808 out of range [-2147483648, 2147483647]    # 1e-999
 得到 `cannot represent no digits in nan exactly`、`cannot represent more than one
 decimal point: 1.2.3 exactly` 这类既不成立也读不通的句子。`UnparsableInput` 的第二个
 字段是拒绝原因（`no digits` / `sign with no digits` / …），整句由 `describe()` 组织，
-所以没有任何片段需要充当某个句子的语法成分。
+所以没有任何片段需要充当某个句子的语法成分。指数尾部进一步区分有无实际的符号：
+`1e` 报 `exponent with no digits`，只有 `1e+` / `1e-` 才报
+`exponent sign with no digits`（2026-11-16）。
 
 **语义分支的两条 payload 也必须是名词短语**（2026-11-15 审计）：负系数与负 NaN
 payload 都是「看得懂但装不下」，走 `InexactConversion`，payload 由外壳补全成整句：
