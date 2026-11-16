@@ -104,6 +104,10 @@ test "describe: decimal Infinity is not given a NaN payload" {
     content="sign=1\nkind=infinity  value=-Infinity",
   )
   inspect(
+    describe_decimal(f128, f128.from_hex("78000000000000000000000000000000")),
+    content="sign=0\nkind=infinity  value=Infinity",
+  )
+  inspect(
     describe_decimal(f128, f128.from_hex("7C000000000000000000000000000000")),
     content="sign=0  payload=0\nkind=nan  value=NaN",
   )
