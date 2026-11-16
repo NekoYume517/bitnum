@@ -117,3 +117,27 @@ test "from_hex: a non-hex character is a parse failure, not a rounding" {
   inspect(msg.contains("78ZZ0000"), content="true")
   inspect(msg.contains("cannot represent"), content="false")
 }
+
+///|
+/// An exponent marker with nothing after it has no sign to blame. Keep that
+/// distinct from an explicit `+` or `-` with no following digits.
+test "parse_decimal: a missing exponent does not invent a sign" {
+  let cases : Array[(String, String)] = [
+    ("1e", "cannot parse '1e': exponent with no digits"),
+    ("1.e", "cannot parse '1.e': exponent with no digits"),
+    ("1E", "cannot parse '1E': exponent with no digits"),
+    ("1e+", "cannot parse '1e+': exponent sign with no digits"),
+    ("1e-", "cannot parse '1e-': exponent sign with no digits"),
+  ]
+  for entry in cases {
+    let (text, expected) = entry
+    let msg = try {
+      let _ = parse_decimal(text)
+      "no error"
+    } catch {
+      UnparsableInput(actual, why) => "cannot parse '\{actual}': \{why}"
+      e => "wrong error variant: \{e.describe()}"
+    }
+    inspect(msg, content=expected)
+  }
+}

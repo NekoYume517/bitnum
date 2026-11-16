@@ -282,6 +282,9 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
       raise UnparsableInput(s, "junk after the number")
     }
     i = i + 1
+    if i >= n {
+      raise UnparsableInput(s, "exponent with no digits")
+    }
     let mut exp_negative = false
     if i < n {
       let sc = s.get_char(i).unwrap()
