@@ -375,7 +375,11 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 
 每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
 `DpdDigitGroupMisaligned` 是对 PLAN.md §5 的追加，与 copybook 的
-`RecordRemainder` 同类 —— 属于补充而非签名变更。
+`RecordRemainder` 同类 —— 属于补充而非签名变更。当前编解码路径不会抛出
+`DpdRedundantCodeAccepted` / `CombinationInvalid` / `DpdDigitGroupMisaligned`：
+冗余 DPD 通过 `DecodedDecimal::redundant_groups` 报告，32 种组合字段均有定义，
+线格式内部也没有独立的数字缓冲区入口。它们是公开错误词汇，不应被算作
+「当前实现可达且已有回归」的分支。
 
 **两个指数变体不是重复**（BN-B5，修复自 2026-11-10 审计）。编码器守两道独立的门：
 
