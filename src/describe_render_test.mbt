@@ -87,3 +87,24 @@ test "value text helpers preserve a binary NaN's sign" {
   inspect(binary16_value_text(0x7E01), content="NaN")
   inspect(bfloat16_value_text(0x7FC1), content="NaN")
 }
+
+///|
+/// Infinity has a sign but no diagnostic payload. Only NaNs carry the latter;
+/// printing `payload=0` for Infinity invents a field that the format does not have.
+test "describe: decimal Infinity is not given a NaN payload" {
+  let f32 : DecimalFormat = Decimal32
+  let f64 : DecimalFormat = Decimal64
+  let f128 : DecimalFormat = Decimal128
+  inspect(
+    describe_decimal(f32, f32.from_hex("78000000")),
+    content="sign=0\nkind=infinity  value=Infinity",
+  )
+  inspect(
+    describe_decimal(f64, f64.from_hex("F800000000000000")),
+    content="sign=1\nkind=infinity  value=-Infinity",
+  )
+  inspect(
+    describe_decimal(f128, f128.from_hex("7C000000000000000000000000000000")),
+    content="sign=0  payload=0\nkind=nan  value=NaN",
+  )
+}

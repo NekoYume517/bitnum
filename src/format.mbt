@@ -145,7 +145,8 @@ pub fn describe_decimal(
       sb.write_string("  exponent=\{v.exponent}")
       sb.write_string("  coefficient=\{v.coefficient}\n")
     }
-    _ => {
+    DInfinity => sb.write_string("sign=\{if v.negative { 1 } else { 0 }}\n")
+    DNan | DSignalingNan => {
       sb.write_string("sign=\{if v.negative { 1 } else { 0 }}")
       sb.write_string("  payload=\{v.coefficient}\n")
     }
