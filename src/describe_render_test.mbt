@@ -235,3 +235,48 @@ test "describe: decimal Infinity is not given a NaN payload" {
     content="sign=0  payload=0\nkind=nan  value=NaN",
   )
 }
+
+///|
+/// An Infinity pattern whose ignored bits are set must say so.
+///
+/// IEEE 754-2008 gives Infinity the whole `11110`-leading family, so everything
+/// below the combination field is ignored — `bitnum check` explains that at
+/// length (`result: infinity family — …`), but `describe_decimal` printed the same
+/// two lines for `7BFFFFFF` and `78000000`. A reader comparing the two bytes sees
+/// 26 bits vanish with no note, which is exactly the "one path explains, the other
+/// stays silent" asymmetry the audit keeps finding (2026-11-17). The value token
+/// is deliberately unchanged: Infinity *is* Infinity; what was missing is the
+/// statement that the rest of the pattern carries nothing.
+test "describe: decimal Infinity reports the bits it ignores" {
+  let f32 : DecimalFormat = Decimal32
+  // Canonical: nothing below the combination field, so no note.
+  inspect(
+    describe_decimal(f32, f32.from_hex("78000000")),
+    content="sign=0\nkind=infinity  value=Infinity",
+  )
+  // The dectest family with a non-zero continuation: 26 ignored bits, named.
+  inspect(
+    describe_decimal(f32, f32.from_hex("7BFFFFFF")),
+    content="sign=0\nkind=infinity  value=Infinity" +
+      "   (mantissa bits set: 0x3FFFFFF, not part of the value; see check)",
+  )
+  // The negative form keeps its sign and gets the same note.
+  inspect(
+    describe_decimal(f32, f32.from_hex("FBFFFFFF")),
+    content="sign=1\nkind=infinity  value=-Infinity" +
+      "   (mantissa bits set: 0x3FFFFFF, not part of the value; see check)",
+  )
+  // The field width follows the format: 122 bits for decimal128.
+  let f128 : DecimalFormat = Decimal128
+  let wide = describe_decimal(
+    f128,
+    f128.from_hex("78FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+  )
+  inspect(wide.contains("not part of the value"), content="true")
+  inspect(wide.contains("value=Infinity"), content="true")
+  // A finite datum keeps its own line: no Infinity note leaks onto it.
+  inspect(
+    describe_decimal(f32, f32.from_hex("22500001")).contains("mantissa bits"),
+    content="false",
+  )
+}

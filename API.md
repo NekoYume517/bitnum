@@ -379,6 +379,19 @@ NaN 成立：二进制侧打 `value=0`、把符号完全交给 `(-0)` 注释，�
 `describe_decimal` 对 Infinity 只打印 sign 和 value；Infinity 没有诊断 payload。
 只有 NaN / sNaN 的第一行打印 `payload=…`，非规范 DPD 的附注规则不变。
 
+**Infinity 族被忽略的位会在 value 行末尾点名**（2026-11-17 审计）。组合字段是 `11110`
+时其下 `bits - 6` 位不承载值，`check` 早已长篇解释这件事，而 `value` 对 `7BFFFFFF` 与
+`78000000` 打印的两行**逐字相同** —— 读者只能自己发现 26 位消失了。现在尾数位非零时补一条
+与 `check` 同族的括号附注（value token 不变：Infinity 就是 Infinity）：
+
+```
+$ bitnum value decimal32 7BFFFFFF
+sign=0
+kind=infinity  value=Infinity   (mantissa bits set: 0x3FFFFFF, not part of the value; see check)
+```
+
+规范形式（`78000000`）没有任何附注，非规范 DPD 的附注规则也不受影响。
+
 ## 8. 错误 `src/error.mbt`
 
 ```moonbit

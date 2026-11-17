@@ -174,6 +174,20 @@ pub fn describe_decimal(
       "   (\{d.redundant_groups} non-canonical DPD group(s); the encoder cannot produce these)",
     )
   }
+  if v.kind == DInfinity {
+    // Infinity owns the whole `11110`-leading family, so the `bits - 6` bits below
+    // the combination field carry no value. `check` says that at length; the value
+    // line used to print the same two lines for `7BFFFFFF` and `78000000`, leaving
+    // a reader to notice 26 bits disappear with no note. The value token stays
+    // `Infinity` on purpose — what was missing is the statement about the rest of
+    // the pattern, not a different value.
+    let ignored = big_slice(raw, 0, fmt.bits() - 6)
+    if not(ignored.is_zero()) {
+      sb.write_string(
+        "   (mantissa bits set: 0x\{ignored.to_string(radix=16).to_upper()}, not part of the value; see check)",
+      )
+    }
+  }
   sb.to_string()
 }
 
