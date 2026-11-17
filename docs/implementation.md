@@ -375,7 +375,7 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
   三元组同一性；非零值符号不同则不等，但 ±0 按数值相等。原 struct 的符号和
   指数仍原样保留，这与既有测试一致，旧文字却笼统写成了「不忽略符号或指数」。
 
-## 13. 2026-11-17 的四条：datum 门、求和、负零 token、表格锁
+## 14. 2026-11-17 的四条：datum 门、求和、负零 token、表格锁
 
 - **wire 层的 datum 门只长在两条分支上。** `Decimal` 的四个字段全公开，`coefficient >= 0`
   这条不变式却只在 `Decimal::make` 与 NaN 专属的 `check_payload` 里各守一次；`encode_raw`
@@ -396,3 +396,36 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
 - **`table` 是唯一没有白盒测试的子命令。** 而 DEMO 引用了全部五张表、README 引用了其中一张
   —— 55 行可见输出零断言。修法不是补一张截图，而是把报告抽成 `table_text` 让测试**读文档**
   比对：代码与文档从此只能一起动。
+
+## 15. 2026-11-17 第二轮：域外实参的三条
+
+这一轮的四条全部属于同一族 —— **公开入口对「域外」这一问只答了一半**，而没答的那一半
+不是报错，是终止进程或者一句单位错了的话。
+
+- **非 BMP 字符把 hex 参数变成 panic。** `String::length()` 数的是 UTF-16 码元，
+  `get_char(i)` 却按同一个码元偏移取 Unicode 标量，所以在星外字符的低代理半位上返回 `None`。
+  `hex_digit` 把这个 `None` `unwrap()` 掉了，于是 `bitnum value binary16 🐛` 直接
+  `PanicError`、exit `-1073740791`。偶数长度预检挡不住它（`"🐛".length() == 2`），而且
+  hi / lo 是**先求值后 match**，所以 `00𝔸𝔸𝔸`（8 个码元，形状与一个合法 4 字节 hex 串一样）
+  也会走到那个 unwrap。修法是让 `hex_digit` 成为全函数：`Some` 的含义是「这是一个 hex
+  数字」，不是「这个位置有字符」，缺字符与不是 hex 是同一件事。
+  十进制入口 `from_hex` 本来就到不了这里 —— 它在第一个非 hex **标量**处就 raise 了，
+  而任何低代理半位前面一定是它自己的高位。
+- **位窗 helper 的负实参是 `negative shift count`，不是空窗口。** `big_slice` 只答了
+  `width < 0 → 0`，负 `offset` 直接进 `BigInt::shr`；`big_splice` 的 `from << width` 同理。
+  两个函数都返回 `BigInt`、都没有 `raise` 通道，所以那个错误连 `try` 都接不住 —— 进程终止。
+  现在三种空窗口统一给 `0`（负 `offset`、负 `width`、起点越过末尾），`big_splice` 的负
+  `width` 钉到 `0`，答案仍落在文档公式上（`from << 0 | to`），与 `width == 0` 连续。
+  和 §1 里 `pow2_exact` 的域、BN-j 里 `to_hex` 的夹紧是同一个问题的第三个、第四个实例。
+- **`decode_raw` 说「32 字节」，而 decimal32 是 4 字节。** 它借用了 `TruncatedInput`，
+  而那个变体的字段按定义是**字节**数（`need N bytes, got M`）—— 同一句话还服务着真的在数
+  字节的 `decode_bytes` 和真的在数十六进制字符的 `from_hex`。一句话盖两个量，正是 §1 里
+  两个指数变体分开的理由。现在超宽位串有自己的 `WirePatternTooWide`：
+  `wire pattern needs 33 bits, this format holds 32`。
+  这条**改了既有断言 2 处**，它们 pin 的正是要改的那个变体。
+
+顺带补了一个穷举锁：`wire_roundtrip_field_test.mbt` 覆盖 3 个宽度 × 32 个组合字段 ×
+**全部**指数续域 × 4 种系数续域 = **565248** 个模式，断言每个模式要么逐字节回来、要么
+差别属于两种已声明的豁免（24 个冗余 DPD 码 / Infinity 族丢掉的填充位），且
+`encode_raw` 从不拒绝 `decode_raw` 刚吐出的 datum。上一轮报告里这一节写的是
+「1200 个随机 decimal32 模式」—— 抽样而已。

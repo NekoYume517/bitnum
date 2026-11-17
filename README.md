@@ -255,12 +255,13 @@ pub(all) struct FloatConversion {
 | DPD 码空间（含 24 冗余） | 全部 **1024** |
 | 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
 | 十进制权威向量（**有限值**） | **568**（496 精确 + 72 冗余）；Infinity / NaN / sNaN **没有向量行**，见下 |
+| 组合字段 × 指数续域全空间 | **565248** 个模式的 decode→encode（3 宽度 × 32 组合 × 全部指数续域 × 4 种系数续域） |
 | 舍入模式 | 5 种 × 向量表 |
 | 编解码器实际抛出的错误分支 | 每条至少一个测试 |
 
 ```
 $ moon test
-Total tests: 138, passed: 138, failed: 0.
+Total tests: 143, passed: 143, failed: 0.
 ```
 
 ## 证据
