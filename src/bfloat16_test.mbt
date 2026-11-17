@@ -263,3 +263,48 @@ test "bfloat16: binary32 smallest normal rounds to smallest bfloat16 normal" {
   inspect(conv.inexact, content="false")
   inspect(BFloat16::decode(conv.bits).kind.label(), content="normal")
 }
+
+///|
+/// The two narrowing functions disagree on **signaling** NaNs, and the difference
+/// is deliberate — but it was never written down.
+///
+/// `of_f32` quiets: IEEE 754-2008 §6.2 says an operation on a signaling NaN returns
+/// a quiet NaN carrying the payload, and the existing exhaustive test counts exactly
+/// 126 widened sNaN patterns as "quieted". `of_f32_truncate` does not quiet: its
+/// contract is "keep the top 16 bits, discard the rest", and a NaN whose payload
+/// survives in the high half therefore comes back still signaling. Both are NaNs by
+/// class, so the difference is only the quiet bit — and until 2026-11-17 `API.md` §3
+/// claimed nothing about it either way, which left an asymmetry a reader could only
+/// discover by running both. The behaviour stays; the claim is now explicit and
+/// pinned (2026-11-17 audit, BN-l).
+test "bfloat16: truncation keeps a signaling NaN, rounding quiets it" {
+  // Payload in bits 16..21, quiet bit (bit 22) clear: a binary32 signaling NaN.
+  let quiet_bit_clear = Float::reinterpret_from_uint(0x7F810000U)
+  inspect(quiet_bit_clear.is_nan(), content="true")
+  let truncated = of_f32_truncate(quiet_bit_clear)
+  inspect(truncated.to_uint(), content="32641")
+  let rounded = of_f32_round(quiet_bit_clear)
+  inspect(rounded.bits.to_uint(), content="32705")
+  // Only bit 6 (bfloat16's quiet bit) separates them, so the payload is untouched
+  // and the rounding reports no loss.
+  inspect(
+    truncated.to_uint() | 0x40,
+    content=rounded.bits.to_uint().to_string(),
+  )
+  inspect(rounded.inexact, content="false")
+  inspect(truncate_round_differ(quiet_bit_clear), content="true")
+  // Both are NaNs by class: the class is not what changes.
+  inspect(BFloat16::decode(truncated).kind.label(), content="nan")
+  inspect(BFloat16::decode(rounded.bits).kind.label(), content="nan")
+  // The negative side behaves identically.
+  let neg = Float::reinterpret_from_uint(0xFF810000U)
+  inspect(of_f32_truncate(neg).to_uint(), content="65409")
+  inspect(of_f32_round(neg).bits.to_uint(), content="65473")
+  // A NaN whose payload is entirely in the discarded low half is the *other* case:
+  // there truncation would mint an infinity, so it forces the canonical quiet NaN
+  // and the two functions still agree on being quiet.
+  let low_payload = Float::reinterpret_from_uint(0x7F800001U)
+  inspect(of_f32_truncate(low_payload).to_uint(), content="32704")
+  inspect(of_f32_round(low_payload).bits.to_uint(), content="32704")
+  inspect(of_f32_round(low_payload).inexact, content="true")
+}

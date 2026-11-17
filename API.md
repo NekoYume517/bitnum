@@ -136,6 +136,19 @@ pub fn truncate_round_differ(Float) -> Bool                     // 两者是否�
 所以判定基于**源值**（`exp == 0xFF && mantissa != 0`），不是截断后的模式：
 截断后的模式里 Inf 和 payload 耗尽的 NaN 都显示 `sig == 0`，分不开。
 
+**两者对 signaling NaN 的 quiet 口径不同，这是有意的**（2026-11-17 审计，BN-l）：
+
+| 入口 | 输入 binary32 sNaN（payload 落在高半） | 结果 |
+|---|---|---|
+| `of_f32` | `0x7F810000` | `0x7FC1` —— 置 quiet 位（IEEE 754-2008 §6.2：运算遇 sNaN 返回 quiet NaN，携带 payload；`inexact` 仍为 `false`，因为没有 payload 位被丢弃） |
+| `of_f32_truncate` | `0x7F810000` | `0x7F81` —— quiet 位**不动**，结果仍是 signaling NaN |
+
+`of_f32_truncate` 的契约就是「保留高 16 位、丢掉低 16 位」，名字里没有 quiet 化这一步，
+替调用方做反而破坏它的语义；需要 quiet 的调用方拿 `of_f32`。两种结果的**类**都是 NaN，
+差别只在 bf16 的 quiet 位（bit 6）。`src/bfloat16_test.mbt` 里
+「truncation keeps a signaling NaN, rounding quiets it」把两条路径与
+`truncate_round_differ` 的差异逐位钉住，既有穷举用例则数到 126 个被 quiet 化的 pattern。
+
 **bfloat16 没有 binary64 直连入口，这是有意的**（BN-B12，补声明自 2026-11-10 审计）。
 库只提供 binary32 → bfloat16（`of_f32` / `of_f32_truncate`），所以
 `Double → bfloat16` 必然经过 `Double → Float` 这一步，而这一步是**平台转换**、
