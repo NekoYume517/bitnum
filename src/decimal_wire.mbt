@@ -268,7 +268,13 @@ pub fn DecimalFormat::decode_raw(
   let width = self.bits()
   let limit = BigInt::from_int(1) << width
   if raw.compare(limit) >= 0 {
-    raise TruncatedInput(width, raw.bit_length())
+    // Reported in **bits**, not through `TruncatedInput`: the caller supplied a bit
+    // string and this check is about bit width, while `TruncatedInput` counts bytes
+    // for the two entry points that really take bytes and hex digits. Sharing one
+    // variant made the sentence say `need 32 bytes` about a 4-byte decimal32 — the
+    // same one-wording-two-quantities defect BN-B5 removed from the two exponent
+    // variants (2026-11-17 audit, BN-p).
+    raise WirePatternTooWide(raw.bit_length(), width)
   }
   if raw.compare_int(0) < 0 {
     // Not a size question: a wire pattern is a non-negative integer, and the old

@@ -104,6 +104,7 @@ pub(all) suberror BitnumError {
   InexactConversion(String)
   UnparsableInput(String, String)
   TruncatedInput(Int32, Int32)
+  WirePatternTooWide(Int32, Int32)
   NanPayloadTooLarge(Int32, Int32)
   DpdDigitGroupMisaligned(Int32)
   DpdCodeOutOfRange(Int32)

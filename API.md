@@ -311,7 +311,21 @@ pub fn DecimalFormat::hex_width(Self) -> Int
 ```
 
 **`decode_raw` / `encode_raw` 的容器约定**：`raw` 是 BigInt，右对齐在低 `bits` 位。
-高出的位置被**拒绝**（`TruncatedInput`），不截断。一个约定服务三种格式，不用三份位运算。
+高出的位置被**拒绝**，不截断。一个约定服务三种格式，不用三份位运算。
+
+**超宽 `raw` 的单位是位，不是字节**（2026-11-17 审计，BN-p）。这条拒绝原先借
+`TruncatedInput` —— 而那个变体的两个字段按 `error.mbt` 的定义是**字节**数，`describe()`
+的整句是 `need N bytes, got M`。于是库对 decimal32 说「need **32 bytes**」，而它宽 4 字节；
+`decode_raw` 的实参是位串，检查的也是位宽，读者拿到的却是一个字节数。这正是 BN-B5 从
+两个指数变体上清掉的那种「一句话盖两个量」。现在它有独立的变体：
+
+```
+$ # 库级
+decimal32.decode_raw(2^32)   -> wire pattern needs 33 bits, this format holds 32
+```
+
+`decode_bytes` / `from_hex` 继续用 `TruncatedInput`：那两个入口真的在数字节和十六进制字符
+（`need 4 bytes, got 5` / `decimal32 is 8 hex digits, got 7`），单位没有第二种读法。
 
 **负数 `raw` 是语义拒绝，不是字节数问题**（2026-11-17 审计）。线格式的位串是非负整数，
 而修复前它借用 `TruncatedInput(width, -1)` 表达，读者看到的是
@@ -470,7 +484,8 @@ pub(all) suberror BitnumError {
   UnbiasedExponentOutOfRange(Int64, Int64, Int64)  // 真指数：值, min, max
   InexactConversion(String)                 // 语义类：源→目标描述
   UnparsableInput(String, String)           // 词法类：原文本, 拒绝原因
-  TruncatedInput(Int, Int)                  // 需要, 实际
+  TruncatedInput(Int, Int)                  // 需要, 实际（字节数）
+  WirePatternTooWide(Int, Int)              // 位串位宽, 格式位宽（2026-11-17 追加）
   NanPayloadTooLarge(Int, Int)              // payload 位宽, 容器容量
   DpdDigitGroupMisaligned(Int)              // 分组长度不是 3 的倍数
   DpdCodeOutOfRange(Int)                    // DPD 码不在 0..1023（2026-11-17 追加）
@@ -490,6 +505,10 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 `DpdCodeOutOfRange` 相反：**它是可达的**，由四个公开 DPD 入口在实参不在 `0..1023` 时抛出
 （2026-11-17 审计，见 §5）。这正是它与 `DpdDigitGroupMisaligned` 的区别 —— 后者是词汇，
 前者是当前实现真的会说的话。
+
+`WirePatternTooWide` 同样**可达**：`decode_raw` 在 `raw >= 2^bits` 时抛出（见 §6），
+措辞是 `wire pattern needs 33 bits, this format holds 32`。它从 `TruncatedInput` 里分出来，
+理由是同一句话不能既是字节数又是位宽 —— 与下面两个指数变体的划分同一个道理。
 
 **两个指数变体不是重复**（BN-B5，修复自 2026-11-10 审计）。编码器守两道独立的门：
 

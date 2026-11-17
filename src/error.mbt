@@ -59,7 +59,20 @@ pub(all) suberror BitnumError {
   /// grammatical part of one.
   UnparsableInput(String, String)
   /// `needed` bytes required, `got` bytes supplied.
+  ///
+  /// Always a **byte** count (hex digits only at the CLI boundary, which
+  /// translates it): the two entry points that raise it — `decode_bytes` and
+  /// `from_hex` — are counting exactly that. A bit pattern wider than its format
+  /// is a different quantity and has its own variant, `WirePatternTooWide`.
   TruncatedInput(Int32, Int32)
+  /// A wire pattern wider than the format: `width` bits supplied, `capacity` bits
+  /// the format holds.
+  ///
+  /// Split out of `TruncatedInput` for the reason BN-B5 split the two exponent
+  /// variants: one wording covering two quantities said `need 32 bytes, got 33`
+  /// about a **decimal32**, which is four bytes wide. `decode_raw` takes a bit
+  /// string, so its report speaks bits (2026-11-17 audit, BN-p).
+  WirePatternTooWide(Int32, Int32)
   /// Payload width `width` requested, container holds `capacity`.
   NanPayloadTooLarge(Int32, Int32)
   /// A decimal digit buffer whose length is not a multiple of three, which no
@@ -92,6 +105,8 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
     InexactConversion(what) => "cannot represent \{what} exactly"
     UnparsableInput(text, why) => "cannot parse '\{text}': \{why}"
     TruncatedInput(needed, got) => "need \{needed} bytes, got \{got}"
+    WirePatternTooWide(width, capacity) =>
+      "wire pattern needs \{width} bits, this format holds \{capacity}"
     NanPayloadTooLarge(width, capacity) =>
       "NaN payload needs \{width} bits, container holds \{capacity}"
     DpdDigitGroupMisaligned(len) =>

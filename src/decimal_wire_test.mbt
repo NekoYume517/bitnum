@@ -479,10 +479,15 @@ test "decimal: raw input wider than the format is rejected, not truncated" {
     let _ = f.decode_raw(too_wide)
     "no error"
   } catch {
-    TruncatedInput(needed, got) => "\{needed} vs \{got}"
+    // BN-p: the pattern is too wide in *bits*, so the report says bits. The old arm
+    // here pinned `TruncatedInput`, whose sentence is a byte count — it read "need
+    // 32 bytes" about a four-byte format. The `\{} vs \{}` shape is kept so this
+    // test stays about the two numbers; the unit is pinned in
+    // `wire_width_message_test.mbt`.
+    WirePatternTooWide(width, capacity) => "\{width} vs \{capacity}"
     _ => "wrong error variant"
   }
-  inspect(r, content="32 vs 33")
+  inspect(r, content="33 vs 32")
 }
 
 ///|
@@ -628,16 +633,16 @@ test "decode_raw: a negative pattern is rejected as a value, not as a byte count
     negative,
     content="cannot represent a negative wire pattern (wire bits are non-negative) exactly",
   )
-  // The width rejection keeps its own variant and its own numbers: 2^32 is one bit
-  // too wide, and `-1` is not "one byte short".
+  // The width rejection keeps its own numbers: 2^32 is one bit too wide, and `-1`
+  // is not "one byte short". It also keeps its own unit — bits, not bytes (BN-p).
   let too_wide = try {
     let _ = f.decode_raw(BigInt::from_int(1) << 32)
     "no error"
   } catch {
-    TruncatedInput(needed, got) => "need \{needed}, got \{got}"
+    WirePatternTooWide(width, capacity) => "\{width} vs \{capacity}"
     _ => "wrong error variant"
   }
-  inspect(too_wide, content="need 32, got 33")
+  inspect(too_wide, content="33 vs 32")
   // Valid patterns are untouched, including the boundary itself.
   inspect(f.decode_raw(BigInt::from_int(0)).value.is_zero(), content="true")
   let top = (BigInt::from_int(1) << 32) - BigInt::from_int(1)
