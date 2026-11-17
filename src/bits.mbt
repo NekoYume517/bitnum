@@ -125,9 +125,15 @@ pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
 }
 
 ///|
-/// `from << width | to` for non-negative BigInts.
+/// `from << width | to` for non-negative BigInts — the OR the formula says, not an
+/// addition that only agrees when `to` fits in `width` bits.
+///
+/// The two spellings differ exactly where a caller would trust the document: with
+/// `to >= 2^width` the bits overlap, `|` keeps them in place and `+` carries out of
+/// the field (`big_splice(1, 4, 2)` is 4 documented, 8 added). The formula is the
+/// contract here, so the code follows it (2026-11-17 audit).
 pub fn big_splice(from : BigInt, to : BigInt, width : Int32) -> BigInt {
-  (from << width) + to
+  BigInt::lor(from << width, to)
 }
 
 ///|
