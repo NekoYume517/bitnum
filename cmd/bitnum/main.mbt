@@ -146,14 +146,30 @@ fn parse_hex_bytes(text : String) -> Bytes? {
 }
 
 ///|
+/// The value of the hex digit at code-unit offset `i`, or `None`.
+///
+/// Total on purpose (2026-11-17 audit, BN-n). `String::length()` counts UTF-16
+/// code units, while `get_char(i)` addresses Unicode *scalars* by that same
+/// offset — so for an astral-plane character (anything above U+FFFF: an emoji, a
+/// mathematical alphanumeric, a CJK extension ideograph) `get_char` answers
+/// `None` at the low-surrogate half. The unpadded `unwrap()` here therefore
+/// aborted the process, and the even-length pre-check in `parse_hex_bytes`
+/// cannot prevent it: `"🐛".length() == 2` passes, which is how
+/// `bitnum value binary16 🐛` died with exit `-1073740791` instead of reporting
+/// the non-hex character. `Some` here means "a hex digit", never "a character
+/// exists", so folding the missing-character case into `None` is the same
+/// rejection the caller already handles.
 fn hex_digit(text : String, i : Int32) -> Int32? {
-  let c = text.get_char(i).unwrap()
-  if c >= '0' && c <= '9' {
-    Some(c.to_int() - '0'.to_int())
-  } else if c >= 'A' && c <= 'F' {
-    Some(c.to_int() - 'A'.to_int() + 10)
-  } else {
-    None
+  match text.get_char(i) {
+    None => None
+    Some(c) =>
+      if c >= '0' && c <= '9' {
+        Some(c.to_int() - '0'.to_int())
+      } else if c >= 'A' && c <= 'F' {
+        Some(c.to_int() - 'A'.to_int() + 10)
+      } else {
+        None
+      }
   }
 }
 
