@@ -361,6 +361,11 @@ exit=1
 
 ## 5. `bitnum table` — 边界值表
 
+下面五块不是手抄的输出，而是 `cmd/bitnum/table_wbtest.mbt` 在测试里逐字比对的对象：
+测试读这份 DEMO（以及 README 里 `table decimal32` 那一块），要求 `table` 的报告与文档
+**逐字节相同**。所以这里的任何一行漂移都会让 `moon test` 变红 —— 2026-11-17 之前
+`table` 是唯一没有任何白盒测试的子命令（连只印散文的 `help` 都有）。
+
 ```
 $ bitnum table binary16
 binary16 boundary values (IEEE 754-2008: s(1) e(5) m(10), bias 15)

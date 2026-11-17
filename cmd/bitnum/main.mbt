@@ -595,12 +595,33 @@ fn cmd_table(format_name : String) -> Int32 raise {
     Some(f) => f
     None => return EXIT_USAGE
   }
+  let text = table_text(fmt) catch {
+    e => {
+      eprintln("bitnum: \{e.describe()}")
+      return EXIT_DATA
+    }
+  }
+  println(text)
+  EXIT_OK
+}
+
+///|
+/// The `table` report as the exact text the command prints.
+///
+/// Building the report as data is what makes it assertable. README.md and
+/// docs/DEMO.md quote these blocks character for character, and until 2026-11-17
+/// nothing compared them: `table` was the only subcommand with no whitebox test
+/// at all (even `help`, which prints prose, had one), so a wrong or drifted row
+/// could ship silently. `cmd/bitnum/table_wbtest.mbt` now asserts this text
+/// against the blocks the two documents quote.
+fn table_text(fmt : FormatName) -> String raise @lib.BitnumError {
+  let lines : Array[String] = []
   match fmt {
     Binary16Fmt => {
-      println(
+      lines.push(
         "binary16 boundary values (IEEE 754-2008: s(1) e(5) m(10), bias 15)",
       )
-      println(
+      lines.push(
         @lib.pad_left("bits", 6) +
         "  " +
         @lib.pad_right("class", 10) +
@@ -622,7 +643,7 @@ fn cmd_table(format_name : String) -> Int32 raise {
       for row in rows {
         let (bits, note) = row
         let d = @lib.Binary16::decode(bits)
-        println(
+        lines.push(
           hex16(bits) +
           "  " +
           @lib.pad_right(d.kind.label(), 10) +
@@ -633,13 +654,12 @@ fn cmd_table(format_name : String) -> Int32 raise {
           ")",
         )
       }
-      EXIT_OK
     }
     Bfloat16Fmt => {
-      println(
+      lines.push(
         "bfloat16 boundary values (high 16 bits of binary32: s(1) e(8) m(7), bias 127)",
       )
-      println(
+      lines.push(
         @lib.pad_left("bits", 6) +
         "  " +
         @lib.pad_right("class", 10) +
@@ -661,7 +681,7 @@ fn cmd_table(format_name : String) -> Int32 raise {
       for row in rows {
         let (bits, note) = row
         let d = @lib.BFloat16::decode(bits)
-        println(
+        lines.push(
           hex16(bits) +
           "  " +
           @lib.pad_right(d.kind.label(), 10) +
@@ -672,10 +692,9 @@ fn cmd_table(format_name : String) -> Int32 raise {
           ")",
         )
       }
-      EXIT_OK
     }
     DecimalFmt(f) => {
-      println(
+      lines.push(
         "\{f.name()} boundary values (DPD: \{f.bits()} bits, \{f.digits()} digits, bias \{f.bias()})",
       )
       let max_coef = max_coefficient(f)
@@ -706,7 +725,7 @@ fn cmd_table(format_name : String) -> Int32 raise {
         (@lib.Decimal::infinity(true), "-infinity"),
         (@lib.Decimal::nan(false, @bigint.BigInt::from_int(0)), "quiet NaN"),
       ]
-      println(
+      lines.push(
         @lib.pad_right("hex", f.hex_width()) +
         "  " +
         @lib.pad_right("class", 10) +
@@ -714,13 +733,8 @@ fn cmd_table(format_name : String) -> Int32 raise {
       )
       for row in rows {
         let (v, note) = row
-        let bytes = f.encode_bytes(v) catch {
-          e => {
-            eprintln("bitnum: \{e.describe()}")
-            return EXIT_DATA
-          }
-        }
-        println(
+        let bytes = f.encode_bytes(v)
+        lines.push(
           hex_of_bytes(bytes) +
           "  " +
           @lib.pad_right(v.kind.label(), 10) +
@@ -731,8 +745,8 @@ fn cmd_table(format_name : String) -> Int32 raise {
           ")",
         )
       }
-      println("")
-      println(
+      lines.push("")
+      lines.push(
         "Emax=\{f.emax()}  Emin=\{f.emin()}  Etiny=\{f.etin_y()}  Emax_top=\{f.emax_top()}",
       )
       // Two ceilings apply and the smaller wins, so both are printed rather than a
@@ -740,12 +754,29 @@ fn cmd_table(format_name : String) -> Int32 raise {
       //   adjusted <= Emax   (why the largest finite sits at Emax - p + 1)
       //   exp_top  <= 2      (why zero and narrow coefficients cap at Emax_top)
       // They coincide at full precision, which is the coherence the format relies on.
-      println(
+      lines.push(
         "max exponent: \{f.emax()} with a \{f.digits()}-digit coefficient, \{f.emax_top()} for anything narrower (zero included)",
       )
-      EXIT_OK
     }
   }
+  join_lines(lines)
+}
+
+///|
+/// Join lines with `\n` and no trailing newline, so `println` adds exactly one —
+/// which is what keeps the printed bytes identical to the previous
+/// one-`println`-per-line version.
+fn join_lines(lines : Array[String]) -> String {
+  let sb = StringBuilder()
+  let mut first = true
+  for l in lines {
+    if not(first) {
+      sb.write_char('\n')
+    }
+    first = false
+    sb.write_string(l)
+  }
+  sb.to_string()
 }
 
 ///|

@@ -4,10 +4,16 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/bigint",
   "moonbitlang/core/string" @strconv,
+  // Used by `table_wbtest.mbt` to read the README/DEMO blocks the `table`
+  // report is quoted in. A whitebox test is the only user, which the manifest
+  // cannot spell in this toolchain (`test-import` is not a keyword here), so
+  // `unused_package` is off for this package — the same trade `src/moon.pkg`
+  // makes for the same reason.
+  "moonbitlang/x/fs",
 }
 
 pkgtype(kind: "executable")
 
 options(
-  warn_list: "-deprecated-implicit_impl_as_method-unused_error_type",
+  warn_list: "-unused_package-deprecated-implicit_impl_as_method-unused_error_type",
 )
