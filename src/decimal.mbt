@@ -314,10 +314,31 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     }
     let mag = digits_to_int64(etext, exp_negative)
     let signed = if exp_negative { -mag } else { mag }
-    // Both operands are within `Int32` (the scanner bound `mag` there), so their
-    // `Int64` sum cannot overflow `Int64` either. The check is therefore on the
-    // *result*, not on the addition: what "overflow" means here is "past the
-    // container `Decimal.exponent` can hold", which is the honest bound.
+    // The sum has to be *checked*, not merely compared. `digits_to_int64` bounds
+    // `mag` to `Int64` — BN-B3 widened it there from `Int32`, which is exactly why
+    // the pre-2026-11-17 comment here ("both operands are within `Int32`, so their
+    // `Int64` sum cannot overflow either") stopped being true. With two or more
+    // fractional digits and a magnitude of `Int64::MAX`, `exponent64 + signed`
+    // left `Int64` and wrapped, and the report carried the **opposite sign** from
+    // the input: `0.12e-9223372036854775807` printed `exponent
+    // 9223372036854775807`, while the same magnitude without a fraction printed
+    // the correct negative value.
+    //
+    // Only the negative direction can overflow — `exponent64` is `-frac_digits`
+    // (never positive) and `signed <= Int64::MAX` — so one guard covers it. The
+    // exact sum being below `Int64::MIN` already proves it is outside the
+    // container, and the report saturates at that end with the input's own sign:
+    // the same convention `digits_to_int64` uses for a magnitude too wide for
+    // `Int64`, and the opposite of what the wrap produced.
+    if signed < 0L && exponent64 < -9223372036854775807L - 1L - signed {
+      raise UnbiasedExponentOutOfRange(
+        -9223372036854775807L - 1L,
+        -2147483648L,
+        2147483647L,
+      )
+    }
+    // Safe now: the guard above covers the only direction that can leave
+    // `Int64`, and `exponent64 <= 0 <= signed` bounds the other side.
     let total = exponent64 + signed
     if total > 2147483647L || total < -2147483648L {
       raise UnbiasedExponentOutOfRange(total, -2147483648L, 2147483647L)

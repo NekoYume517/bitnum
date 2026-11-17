@@ -184,6 +184,76 @@ test "parse_decimal: a magnitude past Int64 saturates, it never wraps into a val
 }
 
 ///|
+/// BN-c (2026-11-17): the two halves of the exponent are summed in `Int64`, and
+/// the guard around that sum only *compared* the result. When BN-B3 widened
+/// `digits_to_int64`'s bound from `Int32` to `Int64`, the operands stopped being
+/// small enough for the compare to be safe: with two or more fractional digits
+/// and a magnitude at `Int64::MAX`, `exponent64 + signed` leaves `Int64` and
+/// wrapped, so the report carried the **opposite sign** from the input:
+///
+///   0.12e-9223372036854775807  ->  exponent 9223372036854775807 out of range ...
+///
+/// while `1e-9223372036854775807` (no fraction) reported the negative value it
+/// should. The comment above the sum still claimed "both operands are within
+/// `Int32` (the scanner bound `mag` there)" — precisely the assumption the wrap
+/// disproved, so the comment was wrong too.
+///
+/// The fix is a checked addition: when the exact sum is below `Int64::MIN` the
+/// report saturates at that end *with the input's sign*, which is the convention
+/// `digits_to_int64` already uses for a magnitude too wide for `Int64` and the
+/// opposite of what the wrap produced.
+test "parse_decimal: a sum that leaves Int64 keeps the input's sign" {
+  // No fractional digits: the sum fits, and the report is exact.
+  let exact = try {
+    let _ = parse_decimal("1e-9223372036854775807")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    exact,
+    content="exponent -9223372036854775807 out of range [-2147483648, 2147483647]",
+  )
+  // One fractional digit: the exact sum is `Int64::min`.
+  let at_min = try {
+    let _ = parse_decimal("0.1e-9223372036854775807")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    at_min,
+    content="exponent -9223372036854775808 out of range [-2147483648, 2147483647]",
+  )
+  // Two and three fractional digits: the exact sum is *below* `Int64::min`. It
+  // must still report the input's sign, never a wrapped positive number.
+  for text in ["0.12e-9223372036854775807", "0.123e-9223372036854775807"] {
+    let msg = try {
+      let _ = parse_decimal(text)
+      "no error"
+    } catch {
+      e => e.describe()
+    }
+    inspect(
+      msg,
+      content="exponent -9223372036854775808 out of range [-2147483648, 2147483647]",
+    )
+  }
+  // The positive direction has no such overflow — the fraction only subtracts —
+  // so it must keep reporting the exact sum.
+  let pos = try {
+    let _ = parse_decimal("0.12e9223372036854775807")
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+  inspect(
+    pos,
+    content="exponent 9223372036854775805 out of range [-2147483648, 2147483647]",
+  )
+}
+
+///|
 /// The check must not reject exponents the container can legitimately hold: every
 /// `dectest`-style triple still parses to the same exponent it always did.
 test "parse_decimal: in-range exponents still parse unchanged" {
