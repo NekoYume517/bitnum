@@ -345,16 +345,21 @@ pub fn DecimalFormat::encode_raw(
   }
   let comb_shift = width - 6
 
+  // One gate for all four kinds, before any wire shape is written: see
+  // `check_datum`. A per-branch guard is what let the finite branch trust a
+  // field the type never constrains.
+  self.check_datum(value)
+
   match value.kind {
     DInfinity => sign_bit + (BigInt::from_int(0x1E) << comb_shift)
-    DNan => {
-      let payload = self.check_payload(value.coefficient)
-      sign_bit + (BigInt::from_int(0x1F) << comb_shift) + payload
-    }
+    DNan =>
+      sign_bit + (BigInt::from_int(0x1F) << comb_shift) + value.coefficient
     DSignalingNan => {
-      let payload = self.check_payload(value.coefficient)
       let signal_bit = BigInt::from_int(1) << (width - 7)
-      sign_bit + (BigInt::from_int(0x1F) << comb_shift) + signal_bit + payload
+      sign_bit +
+      (BigInt::from_int(0x1F) << comb_shift) +
+      signal_bit +
+      value.coefficient
     }
     DFinite => {
       // `exponent + bias` is computed in `Int64`: a legal `Int32` exponent can
@@ -434,27 +439,49 @@ pub fn DecimalFormat::encode_raw(
 }
 
 ///|
-/// Validate a NaN payload and return it as a BigInt.
+/// The single datum gate, run once at the top of `encode_raw` for **every**
+/// kind.
 ///
-/// A *negative* payload is not a width question — the old path raised
-/// `NanPayloadTooLarge(-1, cap)` and described a payload that "needs -1 bits",
-/// a number nobody requested. It is a value the API understands and cannot
-/// represent, so by the BN-B9 split it is a semantic rejection worded as
-/// `InexactConversion`; the genuine width case below keeps its variant.
-fn DecimalFormat::check_payload(
+/// `Decimal` has four public fields, so an argument to `encode_raw` is
+/// caller-built data: nothing in the type stops a negative `coefficient`, and
+/// the documented invariant ("`coefficient >= 0`, the sign lives in `negative`")
+/// was enforced in `Decimal::make` only. The wire entry — the one place every
+/// encoding actually passes through — had no such check on the finite branch,
+/// while the two NaN branches checked their payload in a helper of their own.
+/// Three copies of one judgement, one of them missing: a negative coefficient
+/// therefore reached `digit_at`, where `'-'` reads as `-3`, and came back out as
+/// a plausible but unrelated bit pattern (2026-11-17 audit, BN-c).
+///
+/// The gate is a rejection, not a normalisation: it never rewrites a field.
+/// The noun inside the sentence names the field the kind actually uses — NaN and
+/// sNaN spend the coefficient on the diagnostic payload (`check_payload`'s
+/// wording, kept), everything else spends it on the significand.
+fn DecimalFormat::check_datum(
   self : DecimalFormat,
-  payload : BigInt,
-) -> BigInt raise BitnumError {
-  let cap = self.nan_payload_bits()
-  if payload.compare_int(0) < 0 {
+  value : Decimal,
+) -> Unit raise BitnumError {
+  let is_nan = value.kind == DNan || value.kind == DSignalingNan
+  if value.coefficient.compare_int(0) < 0 {
+    // A value the API understands and cannot represent: by the BN-B9 split that
+    // is `InexactConversion` with a noun phrase, so `describe()` can complete
+    // the sentence. The NaN wording is *not* a new sentence — it is the one
+    // `check_payload` already used, moved here so both kinds share the gate.
+    if is_nan {
+      raise InexactConversion(
+        "a negative NaN payload (payloads are non-negative)",
+      )
+    }
     raise InexactConversion(
-      "a negative NaN payload (payloads are non-negative)",
+      "a negative coefficient (the sign lives in `negative`)",
     )
   }
-  if payload.compare(BigInt::from_int(1) << cap) >= 0 {
-    raise NanPayloadTooLarge(payload.bit_length(), cap)
+  if is_nan {
+    // The genuine width case keeps its variant and its numbers.
+    let cap = self.nan_payload_bits()
+    if value.coefficient.compare(BigInt::from_int(1) << cap) >= 0 {
+      raise NanPayloadTooLarge(value.coefficient.bit_length(), cap)
+    }
   }
-  payload
 }
 
 ///|

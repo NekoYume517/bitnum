@@ -326,6 +326,22 @@ coefficient has 199 decimal digits, this format holds 7   # 修复后
 `0x78 / 0x79 / 0x7a / 0x7b` 全是 Infinity，因为组合字段为 `11110` 时指数续域被忽略。
 只认 `0x78` 的解码器会拒掉合法编码，而纯有限值的往返测试发现不了这个。
 
+**`encode_raw` 的 datum 门在四条分支之前**（2026-11-17 审计）。`Decimal` 的四个字段公开，
+所以 `encode_raw` 的参数是**调用方手造的数据**，不是构造器归一化过的值：`coefficient >= 0`
+这条不变式原先只在两处各守一次（`Decimal::make`、NaN 专属的 payload 检查），而
+`DFinite` 分支从不复查。手造一个负系数因此能一路走到 `digit_at`，那里 `'-'` 读作 `-3`，
+最后写出一个「看起来合法」的无关位模式 —— 静默错值，不是拒绝。
+
+现在这道门收敛成 `encode_raw` 入口的**一处** `check_datum`，四种 kind 共用：
+
+| kind | 负系数报什么 | 依据 |
+|---|---|---|
+| `DFinite` / `DInfinity` | `cannot represent a negative coefficient (the sign lives in \`negative\`) exactly` | 与 `Decimal::make` 同一句 |
+| `DNan` / `DSignalingNan` | `cannot represent a negative NaN payload (payloads are non-negative) exactly` | 沿用原措辞，字段确实叫 payload |
+
+payload 宽度那道门保持原变体与原数字（`NaN payload needs 26 bits, container holds 25`），
+且符号判定在宽度判定之前，两者不会互相遮蔽。合法 datum 的编码逐位不变。
+
 ## 7. 渲染 `src/format.mbt`
 
 ```moonbit
