@@ -1,4 +1,4 @@
-# format	hex	negative	coefficient	exponent	kind	source
+# format	hex	negative	coefficient	exponent	kind	source	original_text
 decimal32	A23003D0	1	750	-2	finite	dectest:dsEncode.decTest	-7.50
 decimal32	A26003D0	1	750	1	finite	dectest:dsEncode.decTest	-7.50E+3
 decimal32	A25003D0	1	750	0	finite	dectest:dsEncode.decTest	-750

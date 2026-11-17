@@ -169,6 +169,69 @@ test "vectors-decimal: the 72 non-canonical rows decode to their 8/9 digit seque
 }
 
 ///|
+/// The eighth column — the rendering the reference recorded for the same datum —
+/// is what backs the project's claim that `to-scientific-string` is locked
+/// against the vectors. Until 2026-11-17 no test read it: `API.md` §4 said
+/// "568 条向量的 `original_text` 列逐字符锁定这一点" and README's coverage table
+/// said the same, but `Select-String -Pattern original_text src\*.mbt` had no
+/// hits, so the renderer was covered only by the handful of hand-written cases
+/// in `decimal_wire_test.mbt`. The header did not name the column either, which
+/// is how the gap stayed invisible: a reader could count seven names over eight
+/// fields.
+///
+/// The table is the authority, so this asserts the reference text verbatim —
+/// including the `adjusted == -6` boundary, where plain and scientific notation
+/// meet, which is the one comparison the renderer turns on.
+test "vectors-decimal: every row renders as the reference's original text" {
+  let text = @fs.read_file_to_string("examples/vectors-decimal.tsv")
+  let rows = parse_tsv_rows(text)
+  let mismatches : Array[String] = []
+  let mut checked = 0
+  for row in rows {
+    let fmt = decimal_format_of(row[0])
+    let value = fmt.decode_raw(fmt.from_hex(row[1])).value
+    let want = row[7]
+    checked = checked + 1
+    let got = value.to_scientific_string()
+    if got != want {
+      if mismatches.length() < 10 {
+        mismatches.push(
+          "\{row[0]} \{row[1]}: rendered '\{got}', the reference says '\{want}'",
+        )
+      }
+    }
+  }
+  for m in mismatches {
+    println(m)
+  }
+  inspect(checked, content="568")
+  inspect(mismatches.length(), content="0")
+}
+
+///|
+/// The header has to declare every column the rows carry. It declared seven over
+/// eight fields, so `original_text` was reachable only by counting tabs — which
+/// is why nothing noticed the column was unasserted.
+test "vectors-decimal: the header names every column the rows carry" {
+  let text = @fs.read_file_to_string("examples/vectors-decimal.tsv")
+  let mut header_columns = 0
+  let mut row_columns = 0
+  for line in text.split("\n") {
+    let l = line.to_owned()
+    if l.length() == 0 {
+      continue
+    }
+    if l.has_prefix("#") {
+      header_columns = l[1:].to_owned().split("\t").collect().length()
+    } else if row_columns == 0 {
+      row_columns = l.split("\t").collect().length()
+    }
+  }
+  inspect(header_columns, content="8")
+  inspect(row_columns, content="8")
+}
+
+///|
 /// Parse an Int that may carry a leading `-`; the TSV's exponent column always
 /// does when negative. Hand-rolled so the test helper has no hidden dependency on a
 /// library's error behaviour.
