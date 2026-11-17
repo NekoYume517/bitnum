@@ -49,8 +49,11 @@ test "binary16 midpoint oracle: every gap, both signs, five modes" {
   let mut bad = 0
   let log : Array[String] = []
   // p runs over every finite non-negative binary16 bit pattern whose successor
-  // is also finite; 0x7BFF -> 2^16 (overflow) is excluded on purpose because
-  // the ties-to-even answer at that specific midpoint is library policy.
+  // is also finite. The gap above the largest finite value is *not* covered here
+  // and is not policy: it is specified by IEEE 754-2008 §4.3/§7.4 and asserted
+  // in "midpoint oracle: the gap above the largest finite is specified" below.
+  // (This comment used to call that cell "library policy", which made a
+  // specified boundary look unassertable.)
   for p in 0..<0x7BFF {
     let a = Binary16::decode(p.to_uint16()).to_f64()
     let b = Binary16::decode((p + 1).to_uint16()).to_f64()
@@ -155,6 +158,8 @@ test "bfloat16 midpoint oracle: every gap, both signs, five modes" {
   ]
   let mut bad = 0
   let log : Array[String] = []
+  // Same as above: the max-finite -> 2^128 gap is asserted separately, by
+  // "midpoint oracle: the gap above the largest finite is specified".
   for p in 0..<0x7F7F {
     let a = BFloat16::decode(p.to_uint16()).to_f64()
     let b = BFloat16::decode((p + 1).to_uint16()).to_f64()
@@ -227,4 +232,58 @@ test "bfloat16 midpoint oracle: every gap, both signs, five modes" {
     println(m)
   }
   inspect(bad, content="0")
+}
+
+///|
+/// The one gap the exhaustive loops above skip: **max finite -> 2^k**.
+///
+/// The loops stop at `0x7BFF` / `0x7F7F` because the successor there is not a
+/// finite value of the same format, and the old comment explained that as "the
+/// ties-to-even answer at that specific midpoint is library policy". It is not
+/// policy. The midpoint of `(65504, 65536)` is `65520`, both neighbours are
+/// representable, IEEE 754-2008 §4.3 rounds the tie to the **even** significand
+/// — which is `2^16` — and §7.4 then makes that result overflow to infinity.
+/// §4.3.3 fixes every directed result the same way. So the cell has exactly one
+/// right answer per mode, and leaving it out meant that changing the overflow
+/// branch (say, keeping the largest finite under round-to-nearest) would have
+/// left the whole suite green.
+test "midpoint oracle: the gap above the largest finite is specified" {
+  let modes : Array[RoundingMode] = [
+    NearestEven,
+    NearestAway,
+    TowardZero,
+    TowardPositive,
+    TowardNegative,
+  ]
+  // binary16: (65504 + 65536) / 2, exactly representable in binary64.
+  let bin16_mid = (Binary16::decode(0x7BFF).to_f64() + pow2_exact(16)) / 2.0
+  inspect(bin16_mid, content="65520")
+  // Infinity for the two nearest modes and for the outward directed one; the
+  // largest finite for the two inward ones.
+  let pos_want : Array[Int32] = [0x7C00, 0x7C00, 0x7BFF, 0x7C00, 0x7BFF]
+  let neg_want : Array[Int32] = [0xFC00, 0xFC00, 0xFBFF, 0xFBFF, 0xFC00]
+  for mi in 0..<5 {
+    let conv = of_f64(bin16_mid, modes[mi])
+    inspect(conv.bits.to_int(), content=pos_want[mi].to_string())
+    inspect(conv.inexact, content="true")
+    let neg_conv = of_f64(-bin16_mid, modes[mi])
+    inspect(neg_conv.bits.to_int(), content=neg_want[mi].to_string())
+    inspect(neg_conv.inexact, content="true")
+  }
+  // bfloat16: (3.3895313892515355e38 + 2^128) / 2 = 511 * 2^119, exact in
+  // binary32 (the same "mid is exact in the wider format" precondition the two
+  // exhaustive loops assert).
+  let bf_mid_d = (BFloat16::decode(0x7F7F).to_f64() + pow2_exact(128)) / 2.0
+  let bf_mid = Float::from_double(bf_mid_d)
+  inspect(bf_mid.to_double() == bf_mid_d, content="true")
+  let bf_pos : Array[Int32] = [0x7F80, 0x7F80, 0x7F7F, 0x7F80, 0x7F7F]
+  let bf_neg : Array[Int32] = [0xFF80, 0xFF80, 0xFF7F, 0xFF7F, 0xFF80]
+  for mi in 0..<5 {
+    let conv = of_f32(bf_mid, modes[mi])
+    inspect(conv.bits.to_int(), content=bf_pos[mi].to_string())
+    inspect(conv.inexact, content="true")
+    let neg_conv = of_f32(-bf_mid, modes[mi])
+    inspect(neg_conv.bits.to_int(), content=bf_neg[mi].to_string())
+    inspect(neg_conv.inexact, content="true")
+  }
 }
