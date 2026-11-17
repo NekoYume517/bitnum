@@ -63,6 +63,15 @@ fn main raise {
 fn dispatch(args : Array[String]) -> Int32 raise {
   let cmd = args[1]
   if cmd == "-h" || cmd == "--help" || cmd == "help" {
+    // `help` is a subcommand like the other four, so it answers to the same
+    // argument-count rule: a stray word after it is a usage error (exit 2), not a
+    // request for the usage text. Printing help and exiting 0 on `bitnum help x`
+    // made this the one branch that silently accepted a malformed command line.
+    if args.length() != 2 {
+      eprintln("bitnum: '\{cmd}' takes no arguments\n")
+      eprintln(usage_text())
+      return EXIT_USAGE
+    }
     println(usage_text())
     return EXIT_OK
   }

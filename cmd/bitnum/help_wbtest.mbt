@@ -61,3 +61,41 @@ test "help: every example names a format the parser accepts" {
   // The examples did not silently disappear.
   inspect(examples, content="4")
 }
+
+///|
+/// `help` is the fifth subcommand and it has to answer to the same argument-count
+/// rule as the other four.
+///
+/// `value` / `bits` / `table` / `check` all demand an exact arity and answer a
+/// stray argument with exit 2 (`bad command or wrong argument count`). `help` did
+/// not look past `args[1]`, so `bitnum help x` and `bitnum --help y` printed the
+/// usage and exited **0** — the one place where a caller's mistake is silently
+/// accepted, and the one place that must stay scriptable (`bitnum --help` in a CI
+/// probe should not exit 0 when the command line is malformed). 2026-11-17 audit.
+test "help: a stray argument is a usage error, like every other subcommand" {
+  inspect(dispatch(["bitnum", "help"]) catch { _ => -1 }, content="0")
+  inspect(dispatch(["bitnum", "-h"]) catch { _ => -1 }, content="0")
+  inspect(dispatch(["bitnum", "--help"]) catch { _ => -1 }, content="0")
+  // One argument too many is the caller's mistake, not a request for help.
+  inspect(dispatch(["bitnum", "help", "x"]) catch { _ => -1 }, content="2")
+  inspect(
+    dispatch(["bitnum", "--help", "bitnum"]) catch {
+      _ => -1
+    },
+    content="2",
+  )
+  inspect(dispatch(["bitnum", "-h", "value"]) catch { _ => -1 }, content="2")
+  // And the four real subcommands keep their rule, so the two families agree.
+  inspect(
+    dispatch(["bitnum", "value", "binary16", "0000", "x"]) catch {
+      _ => -1
+    },
+    content="2",
+  )
+  inspect(
+    dispatch(["bitnum", "table", "decimal32", "x"]) catch {
+      _ => -1
+    },
+    content="2",
+  )
+}
