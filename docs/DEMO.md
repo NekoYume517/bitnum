@@ -60,7 +60,9 @@ DPD triple round-trip failures: 0 / 1000
 ```
 
 `exact` 是编码器逐字节复现的行数，`noncanonical` 是必须接受、但编码器永不产生的
-24 个冗余 DPD 码（每个格式 24 条），`fail` 为零。这三行是十进制侧唯一的正确性依据。
+24 个冗余 DPD 码（每个格式 24 条），`fail` 为零。这三行是十进制侧**有限值编码**的正确性依据；Infinity / NaN / sNaN 没有向量行
+（表里 568 行全是有限值），它们由 `decimal_wire_test.mbt` 的手写用例锁定，依据见
+README「向量表覆盖什么、不覆盖什么」。
 
 二进制侧的向量由 `scripts/float_ref.py` 生成，它是精确整数运算，**并与两个独立实现交叉核对**：
 

@@ -378,7 +378,10 @@ coefficient has 199 decimal digits, this format holds 7   # 修复后
 
 **Infinity 是 `11110` 开头的整个族**，不是只有 `0x78`。`dsEncode.decTest` 里
 `0x78 / 0x79 / 0x7a / 0x7b` 全是 Infinity，因为组合字段为 `11110` 时指数续域被忽略。
-只认 `0x78` 的解码器会拒掉合法编码，而纯有限值的往返测试发现不了这个。
+只认 `0x78` 的解码器会拒掉合法编码，而纯有限值的往返测试发现不了这个。注意
+`examples/vectors-decimal.tsv` 的 568 行**全是有限值**（没有 `11110` / `11111` 行），
+所以这一类性质由 `decimal_wire_test.mbt` 的手写用例锁定，依据见 README
+「向量表覆盖什么、不覆盖什么」。
 
 **`encode_raw` 的 datum 门在四条分支之前**（2026-11-17 审计）。`Decimal` 的四个字段公开，
 所以 `encode_raw` 的参数是**调用方手造的数据**，不是构造器归一化过的值：`coefficient >= 0`

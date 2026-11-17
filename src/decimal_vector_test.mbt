@@ -254,3 +254,36 @@ fn parse_int_checked(text : String) -> Int32 {
     acc
   }
 }
+
+///|
+/// The vector table carries **finite rows only**, and that has to be an assertion,
+/// not a footnote.
+///
+/// README's feature matrix used to read "NaN / sNaN ✅ 按 `dectest` 的 `0x7c` / `0x7e`
+/// 约定" next to "十进制权威向量 568 条", which invites the reading that those 568 rows
+/// cover the specials. They do not: every row comes from the numeric operand lists of
+/// `dsEncode` / `ddEncode` / `dqEncode`, and `11110` (Infinity) / `11111` (NaN, sNaN)
+/// never appear in one. The specials are pinned by hand-written cases that cite the
+/// `dectest` lines and IEEE 754-2008 §3.5.2 directly.
+///
+/// Scanning the table for those two combination prefixes is what keeps the wording
+/// honest in both directions: whoever adds a special row is told to update the
+/// coverage paragraph, and whoever narrows the claim has this row as its witness
+/// (2026-11-17 audit, BN-j).
+test "vectors-decimal: the table carries finite rows only" {
+  let text = @fs.read_file_to_string("examples/vectors-decimal.tsv")
+  let rows = parse_tsv_rows(text)
+  let mut special_rows = 0
+  let mut finite_rows = 0
+  for row in rows {
+    let fmt = decimal_format_of(row[0])
+    let comb = big_slice(fmt.from_hex(row[1]), fmt.bits() - 6, 5).to_int()
+    if comb == 0x1E || comb == 0x1F {
+      special_rows = special_rows + 1
+    } else {
+      finite_rows = finite_rows + 1
+    }
+  }
+  inspect(special_rows, content="0")
+  inspect(finite_rows, content="568")
+}

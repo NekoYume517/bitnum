@@ -204,11 +204,29 @@ pub(all) struct FloatConversion {
 | DPD 三元组编解码 | ✅ 1000 个输入穷举，布尔方程而非查表 |
 | 24 个冗余 DPD 码 | ✅ **接受**并按标准解成 8/9 序列；编码器永不产生 |
 | 十进制指数范围 | ✅ `Emax` / `Emin` / `Etiny` / `Emax_top`，与 `dectest` 钳位值一致 |
-| NaN / sNaN（signaling 位） | ✅ 按 `dectest` 的 `0x7c` / `0x7e` 约定 |
-| Infinity（`11110` 整个族） | ✅ `0x78`–`0x7b` 全部识别 |
-| to-scientific-string 渲染 | ✅ 568 条向量的原文逐字符锁定 |
+| NaN / sNaN（signaling 位） | ✅ 按 IEEE 754-2008 §3.5.2 的位布局；**手写用例**，依据 `dsEncode` 的 `0x7c` / `0x7e` 行 —— 向量表里没有特殊值行（见下） |
+| Infinity（`11110` 整个族） | ✅ `0x78`–`0x7b` 全部识别；同样由手写用例锁定，向量表只含有限值 |
+| to-scientific-string 渲染 | ✅ 568 条**有限值**向量的原文逐字符锁定 |
 | BID 编码 | ❌ **不在范围内**，理由见下 |
 
+### 向量表覆盖什么、不覆盖什么
+
+`examples/vectors-decimal.tsv` 的 568 行**全部是有限值**：组合字段只出现
+`00/01/10` 与 `11` 分支的数字前导形式，`11110`（Infinity）与 `11111`（NaN / sNaN）
+一行都没有。这是来源决定的，不是遗漏 —— 每行都来自 `dectest` 的 `dsEncode` /
+`ddEncode` / `dqEncode` 里「数值 → 字节」的条目，而那些条目的操作数是**数**。
+
+特殊值由手写用例锁定，依据是可复核的两处：
+
+| 性质 | 依据 | 锁定处 |
+|---|---|---|
+| `11110` 是 Infinity 的整个族（`0x78`–`0x7B`） | IEEE 754-2008 §3.5.2；`dsEncode.decTest` 的 `0x78` / `0x79` / `0x7a` / `0x7b` 四行 | `decimal_wire_test.mbt`「Infinity is the whole 11110-leading family」 |
+| NaN 的 signaling 位是组合字段下**第一位**（`0` = quiet） | 同上；`dsEncode` 的 `#7c000000` / `#7e000000` 行 | `decimal_wire_test.mbt`「NaN signaling bits follow dectest」 |
+| payload 宽度 = `bits - 7`（decimal32 是 25 位） | 几何推导 + `nan_payload_bits()` 自检 | 「NaN payload round-trips within capacity」 |
+
+「表里只有有限值行」这句话本身也有断言：`decimal_vector_test.mbt` 扫全表，
+要求 `11110` / `11111` 前缀的行数为 0、其余 568 行。谁往表里加特殊值行，那条用例先红，
+提醒同步本节与上面的特性表。
 ### 为什么没有 BID
 
 `dectest` 的 `dsEncode` / `ddEncode` / `dqEncode` 只覆盖 **DPD**。官方套件里没有 BID
@@ -236,7 +254,7 @@ pub(all) struct FloatConversion {
 | DPD 三元组往返 + 注入性 | 全部 **1000** |
 | DPD 码空间（含 24 冗余） | 全部 **1024** |
 | 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
-| 十进制权威向量 | **568**（496 精确 + 72 冗余） |
+| 十进制权威向量（**有限值**） | **568**（496 精确 + 72 冗余）；Infinity / NaN / sNaN **没有向量行**，见下 |
 | 舍入模式 | 5 种 × 向量表 |
 | 编解码器实际抛出的错误分支 | 每条至少一个测试 |
 
