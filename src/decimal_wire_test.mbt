@@ -565,3 +565,81 @@ test "decimal: numerically_equal ignores padding, not sign or exponent" {
   inspect(numerically_equal(z, nz), content="true")
   inspect(z.negative == nz.negative, content="false")
 }
+
+///|
+/// `to_hex` cannot fail — it returns a `String` — so its domain has to be stated
+/// and enforced instead of producing debris.
+///
+/// Before 2026-11-17 it formatted whatever it was given: a negative `raw` came out
+/// as `00000-1F` (a "hex number" containing a minus sign) and a too-wide one came
+/// out longer than the format's width, so `to_hex` could spell strings no
+/// `from_hex` would ever read back. The clamp is documented as a clamp, not as
+/// "out of range behaves like zero": the low end pins to `0` and the high end pins
+/// to `2^bits - 1`, which is the same "container limit" convention `low_mask64`
+/// uses. Every *validating* entry point (`decode_raw`, `decode_bytes`,
+/// `from_hex`) still rejects the same inputs, so nothing silently accepts them.
+test "to_hex: out-of-range input is clamped, never spelled as debris" {
+  let f : DecimalFormat = Decimal32
+  inspect(f.to_hex(BigInt::from_int(0)), content="00000000")
+  inspect(f.to_hex(BigInt::from_int(1)), content="00000001")
+  // The widest legal pattern is the upper clamp's fixed point.
+  let widest = (BigInt::from_int(1) << 32) - BigInt::from_int(1)
+  inspect(f.to_hex(widest), content="FFFFFFFF")
+  // Negative: pinned to zero, not "-1F" and not a shorter string.
+  inspect(f.to_hex(BigInt::from_int(-31)), content="00000000")
+  inspect(f.to_hex(BigInt::from_int(-1)), content="00000000")
+  // Too wide: pinned to the largest pattern of this width.
+  inspect(f.to_hex(BigInt::from_int(1) << 32), content="FFFFFFFF")
+  inspect(f.to_hex(BigInt::from_int(1) << 40), content="FFFFFFFF")
+  // The clamp never shortens or lengthens the spelling: always `hex_width()`.
+  for
+    raw in [
+      BigInt::from_int(-5),
+      BigInt::from_int(0),
+      widest,
+      BigInt::from_int(1) << 33,
+    ] {
+    inspect(f.to_hex(raw).length(), content="8")
+  }
+}
+
+///|
+/// A negative `raw` is not a *size* complaint, and `TruncatedInput(width, -1)` said
+/// "need 32 bytes, got -1" — a byte count the caller never wrote. By the split
+/// BN-B9 established, a computed quantity the API understands and cannot represent
+/// is a semantic rejection (`InexactConversion` with a noun phrase), the same family
+/// as the negative coefficient and the negative NaN payload.
+///
+/// Deviation from the audit's ruling, recorded on purpose: `CombinationInvalid` was
+/// named for this, but its wording is "invalid combination field 0x…" and a negative
+/// `raw` has no combination field — the sentence would describe 0x0 as the problem,
+/// which is exactly the "the field must name what it bounds" defect BN-B5 removed.
+test "decode_raw: a negative pattern is rejected as a value, not as a byte count" {
+  let f : DecimalFormat = Decimal32
+  let negative = try {
+    let _ = f.decode_raw(BigInt::from_int(-1))
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) =>
+      "still a byte count: need \{needed}, got \{got}"
+    e => e.describe()
+  }
+  inspect(
+    negative,
+    content="cannot represent a negative wire pattern (wire bits are non-negative) exactly",
+  )
+  // The width rejection keeps its own variant and its own numbers: 2^32 is one bit
+  // too wide, and `-1` is not "one byte short".
+  let too_wide = try {
+    let _ = f.decode_raw(BigInt::from_int(1) << 32)
+    "no error"
+  } catch {
+    TruncatedInput(needed, got) => "need \{needed}, got \{got}"
+    _ => "wrong error variant"
+  }
+  inspect(too_wide, content="need 32, got 33")
+  // Valid patterns are untouched, including the boundary itself.
+  inspect(f.decode_raw(BigInt::from_int(0)).value.is_zero(), content="true")
+  let top = (BigInt::from_int(1) << 32) - BigInt::from_int(1)
+  inspect(f.decode_raw(top).value.kind.label(), content="signaling-nan")
+}

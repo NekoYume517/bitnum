@@ -271,7 +271,19 @@ pub fn DecimalFormat::decode_raw(
     raise TruncatedInput(width, raw.bit_length())
   }
   if raw.compare_int(0) < 0 {
-    raise TruncatedInput(width, -1)
+    // Not a size question: a wire pattern is a non-negative integer, and the old
+    // `TruncatedInput(width, -1)` said "need 32 bytes, got -1" — a byte count the
+    // caller never wrote. By the BN-B9 split this is a computed quantity the API
+    // understands and cannot represent, so it is a semantic rejection with a noun
+    // phrase (`check_datum`'s two siblings use the same shape).
+    //
+    // `CombinationInvalid` was the variant the audit named for this; it is not used
+    // because its wording is "invalid combination field 0x…" and a negative `raw`
+    // has no combination field — describing 0x0 as the problem would repeat exactly
+    // the "the field must name what it bounds" defect BN-B5 removed.
+    raise InexactConversion(
+      "a negative wire pattern (wire bits are non-negative)",
+    )
   }
   let negative = big_slice(raw, width - 1, 1).compare_int(1) == 0
   let comb = big_slice(raw, width - 6, 5).to_int()
@@ -578,9 +590,27 @@ pub fn DecimalFormat::hex_width(self : DecimalFormat) -> Int32 {
 
 ///|
 /// Format a wire pattern as upper-case hex, zero-padded to the format width.
+///
+/// `raw` is **clamped** into `[0, 2^bits - 1]` before formatting, because this
+/// function returns a `String` and therefore cannot report a domain error: a
+/// negative input used to come out as `00000-1F` (a hex number with a minus sign in
+/// it) and a too-wide one as a string longer than the format's own width, i.e.
+/// spellings that no `from_hex` would read back. Clamping is the container-limit
+/// convention `low_mask64` documents — the low end pins to `0`, the high end to the
+/// widest pattern of this width — and it is *not* an acceptance: every validating
+/// entry point (`decode_raw`, `decode_bytes`, `from_hex`) still rejects the same
+/// inputs with a variant and its numbers (2026-11-17 audit).
 pub fn DecimalFormat::to_hex(self : DecimalFormat, raw : BigInt) -> String {
-  let text = raw.to_string(radix=16).to_lower()
   let width = self.hex_width()
+  let limit = BigInt::from_int(1) << self.bits()
+  let clamped = if raw.compare_int(0) < 0 {
+    BigInt::from_int(0)
+  } else if raw.compare(limit) >= 0 {
+    limit - BigInt::from_int(1)
+  } else {
+    raw
+  }
+  let text = clamped.to_string(radix=16).to_lower()
   if text.length() >= width {
     text.to_upper()
   } else {

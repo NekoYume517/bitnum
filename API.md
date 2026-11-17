@@ -264,6 +264,21 @@ pub fn DecimalFormat::hex_width(Self) -> Int
 **`decode_raw` / `encode_raw` 的容器约定**：`raw` 是 BigInt，右对齐在低 `bits` 位。
 高出的位置被**拒绝**（`TruncatedInput`），不截断。一个约定服务三种格式，不用三份位运算。
 
+**负数 `raw` 是语义拒绝，不是字节数问题**（2026-11-17 审计）。线格式的位串是非负整数，
+而修复前它借用 `TruncatedInput(width, -1)` 表达，读者看到的是
+`need 32 bytes, got -1` —— 一个没人写过的字节数。按 BN-B9 的划分（看得懂但装不下 →
+`InexactConversion` + 名词短语），现在报
+`cannot represent a negative wire pattern (wire bits are non-negative) exactly`，
+与负系数、负 NaN payload 同族。**刻意没有用 `CombinationInvalid`**：它的措辞是
+`invalid combination field 0x…`，而负数 `raw` 没有组合字段，把 0x0 说成问题正是
+BN-B5 清掉的那种「字段名与界不符」。
+
+**`to_hex` 把 `raw` 夹紧到 `[0, 2^bits - 1]`**（2026-11-17 审计）。它返回 `String`，
+没有报错的通道，所以域必须被声明出来：修复前负数拼成 `00000-1F`（一个带负号的十六进制
+数）、超宽的数拼得比格式宽度还长 —— 两种拼写 `from_hex` 都不会读回。夹紧是
+`low_mask64` 那条「容器极限」约定（下端钉 `0`、上端钉最宽模式），**不是接受**：
+`decode_raw` / `decode_bytes` / `from_hex` 三个校验入口仍照旧拒绝同样的输入。
+
 **`from_hex` 要求精确宽度**（BN-2/P2，修复自 2026-11-04 审计）：长度 ≠ `hex_width()`
 一律 `TruncatedInput(width, got)`，**不补前导零**。理由：十六进制串是字节串的拼写，
 短一个字符就是短一个字节。
