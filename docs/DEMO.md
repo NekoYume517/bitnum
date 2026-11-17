@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 116, passed: 116, failed: 0.
+Total tests: 138, passed: 138, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -612,10 +612,10 @@ exit=0
 
 ```
 $ moon test
-Total tests: 116, passed: 116, failed: 0.
+Total tests: 138, passed: 138, failed: 0.
 ```
 
-116 条测试的覆盖规模（不是"116 个断言"，是 116 条测试里有几条是穷举）：
+138 条测试的覆盖规模（不是"138 个断言"，是 138 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -626,7 +626,11 @@ Total tests: 116, passed: 116, failed: 0.
 | bfloat16 同上 | 全部 **65536** |
 | DPD 三元组往返 | 全部 **1000** |
 | DPD 码空间 | 全部 **1024**（含 24 冗余） |
-| 十进制向量 | **568**（496 精确 + 72 冗余） |
+| 十进制向量 | **568**（496 精确 + 72 冗余），全部有限值；另断言「表里没有 `11110`/`11111` 行」 |
+| 十进制向量原文渲染 | **568** 行的 `original_text` 列逐字符 |
+| `table` 报告 | **5** 个格式的报告逐字节对齐 DEMO / README 引用的围栏块 |
+| 渲染口径矩阵 | **5** 格式 × 6 个 datum 的 `value` token（`0` / `-0` / `±Infinity` / `NaN` / `-NaN`） |
+| 最大有限值之上的中点 | 2 格式 × 5 模式 × 双符号（B4 补的那一格） |
 | 舍入模式 | 5 种 × 向量表 |
 | `bits` 非法字面量 | 9 条（语法错 6 + 溢出 4 + 分类 9 + 符号 2 + hex/note 8 + 措辞 2 + specials 3） |
 
