@@ -135,13 +135,22 @@ pub fn bit_length_big(v : BigInt) -> Int32 {
 
 ///|
 /// Bits `[offset, offset + width)` of a BigInt, as a non-negative BigInt.
+///
+/// The window is **total** (2026-11-17 audit, BN-o). A non-negative integer has
+/// no bits below bit 0 and none past its most significant set bit, so every
+/// window that leaves the number's own bit string is empty — a negative
+/// `offset`, a negative `width`, or a start past the end. Only one of those three
+/// used to be answered: `width < 0` returned zero while a negative `offset`
+/// reached `BigInt::shr`, which raises core's `negative shift count`. Since this
+/// function returns a `BigInt` and is not declared `raise`, that error cannot be
+/// caught by the caller — the process dies. It is the same "state the domain"
+/// question `to_hex` and `low_mask64` answer, applied to the other dimension.
 pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
-  let shifted = v >> offset
-  if width >= 0 {
-    BigInt::land(shifted, (BigInt::from_int(1) << width) - BigInt::from_int(1))
-  } else {
-    BigInt::from_int(0)
+  if offset < 0 || width <= 0 {
+    return BigInt::from_int(0)
   }
+  let shifted = v >> offset
+  BigInt::land(shifted, (BigInt::from_int(1) << width) - BigInt::from_int(1))
 }
 
 ///|
@@ -152,8 +161,16 @@ pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
 /// `to >= 2^width` the bits overlap, `|` keeps them in place and `+` carries out of
 /// the field (`big_splice(1, 4, 2)` is 4 documented, 8 added). The formula is the
 /// contract here, so the code follows it (2026-11-17 audit).
+///
+/// A negative `width` is pinned to `0` rather than shifted (2026-11-17 audit,
+/// BN-o): `from << width` raised core's `negative shift count`, which — with no
+/// `raise` in this signature — terminated the caller's process. Pinning to the
+/// nearest legal width keeps the answer on the formula, `from << 0 | to` =
+/// `from | to`, the same value `width == 0` produces, so the pin is continuous
+/// and invents no arithmetic of its own.
 pub fn big_splice(from : BigInt, to : BigInt, width : Int32) -> BigInt {
-  BigInt::lor(from << width, to)
+  let w = if width < 0 { 0 } else { width }
+  BigInt::lor(from << w, to)
 }
 
 ///|

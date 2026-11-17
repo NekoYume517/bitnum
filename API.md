@@ -52,8 +52,8 @@ pub fn bit_length64(UInt64) -> Int
 pub fn low_mask64(Int) -> UInt64         // n<=0 → 0，n>=64 → 全 1（容器极限，不是钳制）
 pub fn pow2_exact(Int) -> Double raise BitnumError   // 域 [-1074, 1023]，域外报错
 pub fn bit_length_big(BigInt) -> Int
-pub fn big_slice(BigInt, Int, Int) -> BigInt       // width < 0 → 空；越过末尾 → 空
-pub fn big_splice(BigInt, BigInt, Int) -> BigInt   // 实现即文档里的 `from << width | to`
+pub fn big_slice(BigInt, Int, Int) -> BigInt       // 非负整数的位窗；空窗口 → 0（见下）
+pub fn big_splice(BigInt, BigInt, Int) -> BigInt   // 实现即文档里的 `from << width | to`；width < 0 钉 0
 pub fn digit_count_big(BigInt) -> Int
 pub fn zero_of_sign(Bool) -> Double
 pub fn infinity_double() -> Double
@@ -76,6 +76,16 @@ pow2_exact(1024)  -> exponent 1024 out of range [-1074, 1023]
 域内端点按位型断言（`1023` → `0x7FE0000000000000`、`-1074` → `0x1`），编解码器内部走的是
 私有的 `pow2_doubling`（前置条件 `-1074 <= k <= 1023`，两个调用点的实参分别是 `-24` 与
 `exponent - 25`，其中指数域按构造落在 `1..30`）。
+
+**`big_slice` 的位窗是全函数，`big_splice` 的负宽度钉 0**（2026-11-17 审计，BN-o）。
+两者都返回 `BigInt`、都没有 `raise` 通道，所以域必须被声明出来，而且**两个方向都要**。
+`big_slice` 原先只答了一半：`width < 0` 给零，而负 `offset` 会走到 `BigInt::shr`，抛的是
+core 的 `negative shift count` —— 因为签名不带 `raise`，调用方连 `try` 都接不住，进程直接终止。
+现在三种空窗口统一给 `0`：负 `offset`、负 `width`、起点越过末尾。理由与 `width` 那一半原来
+就写着的一样 —— 非负整数没有第 0 位以下的位，也没有末位以后的位。`big_splice` 的负 `width`
+同理钉到最近的合法宽度 `0`，于是答案仍落在公式上（`from << 0 | to` = `from | to`，与
+`width == 0` 连续），既不是反向移位，也不会终止进程。域内实参逐位不变（65536 项穷举、
+568 条向量、五张表全部照旧）。
 
 ## 2. binary16 `src/binary16.mbt`
 
