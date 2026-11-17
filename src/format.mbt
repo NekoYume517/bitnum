@@ -25,7 +25,7 @@ pub fn describe_binary16(bits : UInt16) -> String {
     sb.write_string(" (nan)")
   }
   sb.write_string("  significand=\{d.significand}\n")
-  let value_text = nan_value_text(d.kind, d.sign, d.to_f64())
+  let value_text = signed_value_text(d.kind, d.sign, d.to_f64())
   sb.write_string("kind=\{datum_class_label(d.kind)}  value=\{value_text}")
   sb.write_string(annotate_binary16(d))
   sb.to_string()
@@ -35,6 +35,11 @@ pub fn describe_binary16(bits : UInt16) -> String {
 /// A parenthetical exact hint for the anchor values, so the printed line carries the
 /// interpretation and not just the digits. Empty for everything else: inventing a
 /// comment for arbitrary patterns would be noise.
+///
+/// The `(-0)` / `(0)` pair restates what the value text now spells (`value=-0` /
+/// `value=0`); it is kept so the annotation set stays symmetrical with
+/// `(-infinity)` / `(infinity)`. Before 2026-11-17 the annotation was the *only*
+/// place negative zero survived in `value`, which is why it was introduced.
 fn annotate_binary16(d : Binary16) -> String {
   if d.kind == Zero {
     if d.sign == 1 {
@@ -83,7 +88,7 @@ pub fn describe_bfloat16(bits : UInt16) -> String {
     sb.write_string(" (nan)")
   }
   sb.write_string("  significand=\{d.significand}\n")
-  let value_text = nan_value_text(d.kind, d.sign, d.to_f64())
+  let value_text = signed_value_text(d.kind, d.sign, d.to_f64())
   sb.write_string("kind=\{datum_class_label(d.kind)}  value=\{value_text}")
   sb.write_string(annotate_bfloat16(d))
   sb.to_string()
@@ -91,9 +96,9 @@ pub fn describe_bfloat16(bits : UInt16) -> String {
 
 ///|
 /// The annotation set for bfloat16, mirroring `annotate_binary16`: negative
-/// zero, infinities, the min subnormal, and exact powers of two. The value
-/// text itself renders -0.0 as "0" (`Double::to_string` drops the sign), so
-/// the `(-0)` annotation is what keeps negative zero visible in `value`.
+/// zero, infinities, the min subnormal, and exact powers of two. The value text
+/// spells both zeroes itself (`value=0` / `value=-0`), so the `(0)` / `(-0)`
+/// pair only restates it — kept for symmetry with the infinity pair.
 fn annotate_bfloat16(d : BFloat16) -> String {
   if d.kind == Zero {
     if d.sign == 1 {
@@ -117,14 +122,26 @@ fn annotate_bfloat16(d : BFloat16) -> String {
 }
 
 ///|
-/// The value text for a decoded datum whose exact double is a NaN. `format_double`
-/// prints "NaN" with no sign, which made `value` report `value=NaN` for a
-/// negative NaN in both binary formats while decimal printed `-NaN` — the one
-/// line where the wire's sign bit went missing. The sign lives in the decoded
-/// field, so it is applied here rather than extracted from the double.
-fn nan_value_text(kind : FloatClass, sign : Int32, exact : Double) -> String {
-  if kind == Nan && sign == 1 {
-    "-NaN"
+/// The value text for a decoded binary datum, with both signs the double cannot
+/// carry.
+///
+/// `format_double` prints `0` for negative zero and `NaN` with no sign, so `value`
+/// — the one line whose job is to state the value — would drop a sign bit that the
+/// wire really holds and the decoder really reports. Both signs are applied here
+/// from the decoded field rather than sniffed out of the double, and they spell
+/// exactly what the decimal renderer prints for the same two datums: `-0`, `-NaN`.
+/// Until 2026-11-17 only the NaN half was applied, so `-0` read as `0` in the
+/// binary containers and as `-0` in the decimal ones (API.md §7 claims one
+/// spelling across all five).
+fn signed_value_text(kind : FloatClass, sign : Int32, exact : Double) -> String {
+  if sign == 1 {
+    if kind == Nan {
+      "-NaN"
+    } else if kind == Zero {
+      "-0"
+    } else {
+      format_double(exact)
+    }
   } else {
     format_double(exact)
   }
@@ -248,14 +265,14 @@ fn find_exponent_marker(text : String) -> Int32 {
 /// `to_string` on a Double already gives for a value this narrow.
 pub fn binary16_value_text(bits : UInt16) -> String {
   let d = Binary16::decode(bits)
-  nan_value_text(d.kind, d.sign, d.to_f64())
+  signed_value_text(d.kind, d.sign, d.to_f64())
 }
 
 ///|
 /// The value of a bfloat16 pattern, as text.
 pub fn bfloat16_value_text(bits : UInt16) -> String {
   let d = BFloat16::decode(bits)
-  nan_value_text(d.kind, d.sign, d.to_f64())
+  signed_value_text(d.kind, d.sign, d.to_f64())
 }
 
 ///|

@@ -362,10 +362,19 @@ pub fn pad_right(String, Int) -> String
 `(±infinity)` / 最小次正规 / `2^k`），且两个格式的 value 行对 sign=1 的 NaN 都渲染
 `-NaN` —— 十进制侧对同一语义渲染 `-NaN` / `-sNaN`，五种格式的 `value` 输出口径
 一致（2026-11-15 统一，`src/describe_render_test.mbt` 锁定）。value 文本来自
-`format_double`，而 `Double::to_string` 对 -0.0 渲染 `0`、对 NaN 无符号，所以
--0 靠注释保真、负 NaN 的符号在 value 行单独补。公开的
-`binary16_value_text` / `bfloat16_value_text` 也使用同一条 sign-aware 路径，
-不是只有 `describe_*` 保留负 NaN 符号（2026-11-16 补齐镜像缺口）。
+`format_double`，而 `Double::to_string` 对 -0.0 渲染 `0`、对 NaN 无符号，所以两个
+符号都由解码出的字段在 value 行单独补（`signed_value_text`）。
+
+**负零的 value token 也是 `-0`**（2026-11-17 审计）。上一段那句「口径一致」原先只对
+NaN 成立：二进制侧打 `value=0`、把符号完全交给 `(-0)` 注释，而十进制侧打 `value=-0`
+—— 同一个 `value` 字段两种拼写。现在 `-0` 与 `-NaN` 一样由字段补符号，
+`bitnum value binary16 8000` 打 `kind=finite  value=-0   (-0)`，与
+`bitnum value decimal32 A2500000` 的 `value=-0` 同口径。`(-0)` 注释保留，与
+`(0)` / `(±infinity)` 对称，只是不再独自承担保真的责任；`table` 的 value 列随之
+从 `0` 变成 `-0`，与十进制表对齐。公开的
+`binary16_value_text` / `bfloat16_value_text` 走同一条 sign-aware 路径，
+所以 `table` 列与 `describe_*` 行不会分叉（2026-11-16 补齐镜像缺口，2026-11-17
+补齐零的镜像）。
 
 `describe_decimal` 对 Infinity 只打印 sign 和 value；Infinity 没有诊断 payload。
 只有 NaN / sNaN 的第一行打印 `payload=…`，非规范 DPD 的附注规则不变。

@@ -132,10 +132,15 @@ bfloat16 的 -0 与 ±Infinity 现在也带 binary16 同款注释，负 NaN 的 
 `value=0` 且无注释（与 +0 在 value 行无法区分），两个二进制格式的负 NaN
 都在 value 行丢符号：
 
+2026-11-17 又补上矩阵里最后一格：**负零的 value token 也统一成 `-0`**。修复前
+二进制侧打 `value=0`、把符号完全交给 `(-0)` 注释，十进制侧打 `value=-0`，同一个
+`value` 字段里两种拼写 —— API.md §7 声称五种格式口径一致，所以让实现跟上声明。
+`(-0)` 注释保留（与 `(0)` / `(±infinity)` 对称），只是不再独自承担保真的责任。
+
 ```
 $ bitnum value bfloat16 8000
 sign=1  exponent=0 (zero)  significand=0
-kind=finite  value=0   (-0)
+kind=finite  value=-0   (-0)
 ```
 
 ```
@@ -371,7 +376,7 @@ $ bitnum table binary16
 binary16 boundary values (IEEE 754-2008: s(1) e(5) m(10), bias 15)
   bits  class       value
 0000  zero                   0   (zero)
-8000  zero                   0   (negative zero)
+8000  zero                  -0   (negative zero)
 0001  subnormal   5.960464477539063e-08   (min subnormal, 2^-24)
 03FF  subnormal   0.00006097555160522461   (max subnormal)
 0400  normal      0.00006103515625   (min normal, 2^-14)
@@ -388,7 +393,7 @@ $ bitnum table bfloat16
 bfloat16 boundary values (high 16 bits of binary32: s(1) e(8) m(7), bias 127)
   bits  class       value
 0000  zero                   0   (zero)
-8000  zero                   0   (negative zero)
+8000  zero                  -0   (negative zero)
 0001  subnormal   9.183549615799121e-41   (min subnormal, 2^-133)
 007F  subnormal   1.1663108012064884e-38   (max subnormal)
 0080  normal      1.1754943508222875e-38   (min normal, 2^-126)

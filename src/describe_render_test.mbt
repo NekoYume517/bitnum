@@ -58,8 +58,131 @@ test "describe: a negative NaN keeps its sign in the value line" {
 }
 
 ///|
+/// The `value` token, per format and per datum — one cell per container.
+///
+/// This is the matrix the 2026-11-17 audit built: the same datum must read the
+/// same way in all five containers, because `value` is the line whose whole job
+/// is to state the value. Every column already agreed except `-0`: the binary
+/// renderers printed `0` and left the sign to a trailing `(-0)` annotation, while
+/// the decimal renderer printed `-0`. API.md §7 claims one spelling across the
+/// five formats, so the binary side was made to match the claim rather than the
+/// claim being narrowed to an exception.
+test "describe: the value token is the same in all five containers" {
+  // binary16 / bfloat16 cells.
+  inspect(value_token(describe_binary16(0x0000)), content="0")
+  inspect(value_token(describe_binary16(0x8000)), content="-0")
+  inspect(value_token(describe_binary16(0x7C00)), content="Infinity")
+  inspect(value_token(describe_binary16(0xFC00)), content="-Infinity")
+  inspect(value_token(describe_binary16(0x7E01)), content="NaN")
+  inspect(value_token(describe_binary16(0xFE01)), content="-NaN")
+  inspect(value_token(describe_bfloat16(0x0000)), content="0")
+  inspect(value_token(describe_bfloat16(0x8000)), content="-0")
+  inspect(value_token(describe_bfloat16(0x7F80)), content="Infinity")
+  inspect(value_token(describe_bfloat16(0xFF80)), content="-Infinity")
+  inspect(value_token(describe_bfloat16(0x7FC1)), content="NaN")
+  inspect(value_token(describe_bfloat16(0xFFC1)), content="-NaN")
+  // The public value-text helpers are the `table` column, so they must agree
+  // with the `describe_*` line they are a part of.
+  inspect(binary16_value_text(0x0000), content="0")
+  inspect(binary16_value_text(0x8000), content="-0")
+  inspect(bfloat16_value_text(0x8000), content="-0")
+  // decimal32 / 64 / 128 cells, same datums.
+  let f32 : DecimalFormat = Decimal32
+  let f64 : DecimalFormat = Decimal64
+  let f128 : DecimalFormat = Decimal128
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("22500000"))),
+    content="0",
+  )
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("A2500000"))),
+    content="-0",
+  )
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("78000000"))),
+    content="Infinity",
+  )
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("F8000000"))),
+    content="-Infinity",
+  )
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("7C000000"))),
+    content="NaN",
+  )
+  inspect(
+    value_token(describe_decimal(f32, f32.from_hex("FC000000"))),
+    content="-NaN",
+  )
+  inspect(
+    value_token(describe_decimal(f64, f64.from_hex("A238000000000000"))),
+    content="-0",
+  )
+  inspect(
+    value_token(
+      describe_decimal(f128, f128.from_hex("A2080000000000000000000000000000")),
+    ),
+    content="-0",
+  )
+}
+
+///|
+/// The token after `value=` on a `describe_*` value line, up to the next space
+/// (the annotation column) or the end.
+fn value_token(text : String) -> String {
+  let start = match find_from(text, "value=") {
+    Some(i) => i + 6
+    None => return "<no value= field>"
+  }
+  let mut end = start
+  while end < text.length() {
+    if text.get_char(end).unwrap() == ' ' {
+      break
+    }
+    end = end + 1
+  }
+  text[start:end].to_owned()
+}
+
+///|
+/// Index of `needle` in `text`, or None.
+fn find_from(text : String, needle : String) -> Int32? {
+  let n = needle.length()
+  if n == 0 || text.length() < n {
+    return None
+  }
+  let mut i = 0
+  while i + n <= text.length() {
+    if text[i:i + n].to_owned() == needle {
+      return Some(i)
+    }
+    i = i + 1
+  }
+  None
+}
+
+///|
+/// The two lines that carry the `-0` change verbatim, so the exact spelling is
+/// locked and not just the token: the sign the value text now shows is the same
+/// one the annotation restates.
+test "describe: negative zero spells -0 and keeps its annotation" {
+  inspect(
+    describe_binary16(0x8000),
+    content="sign=1  exponent=0 (zero)  significand=0\n" +
+      "kind=finite  value=-0   (-0)",
+  )
+  inspect(
+    describe_bfloat16(0x8000),
+    content="sign=1  exponent=0 (zero)  significand=0\n" +
+      "kind=finite  value=-0   (-0)",
+  )
+}
+
+///|
 test "describe: binary16 value lines stay byte-for-byte as documented" {
-  // The existing locked outputs (README/DEMO) must not move.
+  // The existing locked outputs (README/DEMO) must not move. The -0 line did
+  // move on 2026-11-17 — deliberately, see the matrix test above: alue now
+  // spells the sign itself, so the expected string is alue=-0   (-0).
   inspect(
     describe_binary16(0x0001),
     content="sign=0  exponent=0 (subnormal)  significand=1\n" +
@@ -73,7 +196,7 @@ test "describe: binary16 value lines stay byte-for-byte as documented" {
   inspect(
     describe_binary16(0x8000),
     content="sign=1  exponent=0 (zero)  significand=0\n" +
-      "kind=finite  value=0   (-0)",
+      "kind=finite  value=-0   (-0)",
   )
 }
 
