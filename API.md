@@ -50,10 +50,10 @@ pub fn popcount64(UInt64) -> Int
 pub fn clz64(UInt64) -> Int              // 零返回 64，故 bit_length64(0) == 0
 pub fn bit_length64(UInt64) -> Int
 pub fn low_mask64(Int) -> UInt64         // n<=0 → 0，n>=64 → 全 1（容器极限，不是钳制）
-pub fn pow2_exact(Int) -> Double         // 精确折半/倍增，不用 @math.pow
+pub fn pow2_exact(Int) -> Double raise BitnumError   // 域 [-1074, 1023]，域外报错
 pub fn bit_length_big(BigInt) -> Int
-pub fn big_slice(BigInt, Int, Int) -> BigInt
-pub fn big_splice(BigInt, BigInt, Int) -> BigInt
+pub fn big_slice(BigInt, Int, Int) -> BigInt       // width < 0 → 空；越过末尾 → 空
+pub fn big_splice(BigInt, BigInt, Int) -> BigInt   // 实现即文档里的 `from << width | to`
 pub fn digit_count_big(BigInt) -> Int
 pub fn zero_of_sign(Bool) -> Double
 pub fn infinity_double() -> Double
@@ -62,6 +62,20 @@ pub fn quiet_nan_double() -> Double
 
 `pow2_exact` 用精确折半构建，因为 libm 的 `pow` 只保证 1 ulp 内准确 —— 那个精度不足以
 声称 65536 项 binary16 表精确。
+
+**`pow2_exact` 的域是 `[-1074, 1023]`，域外 `raise`**（2026-11-17 审计，BN-h）。原因有两条，
+都和 `low_mask64` 的「容器极限」注释同源：精确重复折半的工作量是 `|k|` 次迭代，所以无界的
+`k` 就是无界的循环（`pow2_exact(Int32::MAX)` 是 21 亿次乘法）；而出了这个区间，结果也不再是
+`2^k` —— 它会饱和成 `0` 或 `Infinity`。两条事实用同一个 `raise` 说清，而不是返回一个没人要的数：
+
+```
+$ # 库级
+pow2_exact(1024)  -> exponent 1024 out of range [-1074, 1023]
+```
+
+域内端点按位型断言（`1023` → `0x7FE0000000000000`、`-1074` → `0x1`），编解码器内部走的是
+私有的 `pow2_doubling`（前置条件 `-1074 <= k <= 1023`，两个调用点的实参分别是 `-24` 与
+`exponent - 25`，其中指数域按构造落在 `1..30`）。
 
 ## 2. binary16 `src/binary16.mbt`
 

@@ -83,7 +83,7 @@ pub fn parse_decimal(StringView) -> Decimal raise BitnumError
 
 pub fn popcount64(UInt64) -> Int32
 
-pub fn pow2_exact(Int32) -> Double
+pub fn pow2_exact(Int32) -> Double raise BitnumError
 
 pub fn quiet_nan_double() -> Double
 

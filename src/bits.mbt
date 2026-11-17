@@ -89,11 +89,31 @@ pub fn low_mask64(n : Int32) -> UInt64 {
 }
 
 ///|
-/// `2^k` as a Double, built by exact repeated doubling so the result is exact
-/// for every `k` in the binary64 normal range. `@math.pow` is not used: libm
-/// `pow` is only accurate to within an ulp, which is not good enough to claim
-/// exactness for the 65536-value binary16 table.
-pub fn pow2_exact(k : Int32) -> Double {
+/// `2^k` as a Double, exact for every `k` in `[-1074, 1023]` — binary64's exact
+/// power-of-two range, from the smallest subnormal to the largest finite binade.
+///
+/// The loop is exact repeated doubling rather than `@math.pow`: libm `pow` is only
+/// accurate to within an ulp, which is not good enough to claim exactness for the
+/// 65536-value binary16 table. "Repeated" is also why the domain is checked rather
+/// than assumed — the work is `|k|` iterations, so an unbounded `k` is an unbounded
+/// loop, and outside the range the result stops being a power of two as well (it
+/// saturates to `0` or `infinity`). Rejecting states both facts instead of returning
+/// a number nobody asked for (2026-11-17 audit, BN-h).
+pub fn pow2_exact(k : Int32) -> Double raise BitnumError {
+  if k < -1074 || k > 1023 {
+    raise UnbiasedExponentOutOfRange(k.to_int64(), -1074L, 1023L)
+  }
+  pow2_doubling(k)
+}
+
+///|
+/// The doubling loop without the domain check: **precondition** `-1074 <= k <= 1023`.
+///
+/// Private because the precondition is what makes it safe. The two call sites in
+/// `Binary16::to_f64` pass `-24` and `exponent - 25`, where the exponent field is
+/// `1..30` by construction, and neither function can raise. A public entry point
+/// that skipped the check would be the unbounded loop again.
+fn pow2_doubling(k : Int32) -> Double {
   let mut r = 1.0
   if k >= 0 {
     for _ in 0..<k {

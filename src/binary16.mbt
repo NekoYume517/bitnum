@@ -131,12 +131,12 @@ pub fn Binary16::to_f64(self : Binary16) -> Double {
     Subnormal => {
       // value = significand * 2^-24, exactly.
       let m = self.significand.to_double()
-      m * pow2_exact(-24)
+      m * pow2_doubling(-24)
     }
     Normal => {
       // value = (2^10 + significand) * 2^(exponent - 15 - 10), exactly.
       let m = (self.significand + 0x400).to_double()
-      m * pow2_exact(self.exponent - 15 - 10)
+      m * pow2_doubling(self.exponent - 15 - 10)
     }
   }
   if self.kind == Nan {
