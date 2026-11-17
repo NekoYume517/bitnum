@@ -202,3 +202,107 @@ test "dpd: ten-bit range and the 24 codes are the published list" {
   }
   inspect(listed_wrong, content="0")
 }
+
+///|
+/// A DPD code is ten bits wide, and the decode side used to *truncate* anything
+/// wider instead of refusing it.
+///
+/// `dpd_decode3(1024)` returned `(0, 0, 0)` — the low ten bits of 1024 — so
+/// `dpd_triple_text(1024)` said `"0,0,0"` and `dpd_is_canonical(1024)` said `false`,
+/// neither of which is a statement about the argument. `API.md` §5 declares the
+/// domain as ten bits; a silent mask is the decoder inventing an input, which is the
+/// direction PLAN.md §1.2 forbids ("never silently correct a non-canonical input").
+/// The encoder side keeps its documented precondition (the 2026-11-15 audit left
+/// `dpd_encode3` as a library-level precondition), so this is the decode half of the
+/// same ruling (2026-11-17 audit, BN-i).
+///
+/// No internal caller depended on the truncation: the wire codec takes its code from
+/// `big_slice(raw, shift, 10)`, the tests iterate `0..<1024`, and the three public
+/// wrappers are only ever called with in-range codes. The masked core therefore moved
+/// into a private `dpd_decode10` and every public entry point checks first.
+test "dpd: the decode side refuses a code that is not ten bits" {
+  let rejected = "DPD code 1024 is not a 10-bit code (0..1023)"
+  inspect(dpdp_message_ok(), content="ok")
+  // One past the top, and one below the bottom: the same rejection, naming the code.
+  inspect(dpd_decode_message(1024), content=rejected)
+  inspect(
+    dpd_decode_message(-1),
+    content="DPD code -1 is not a 10-bit code (0..1023)",
+  )
+  // Every public wrapper answers the same way, so no entry point keeps the mask.
+  inspect(
+    dpd_checked_message(2000),
+    content="DPD code 2000 is not a 10-bit code (0..1023)",
+  )
+  inspect(
+    dpd_canonical_message(1024),
+    content="DPD code 1024 is not a 10-bit code (0..1023)",
+  )
+  inspect(
+    dpd_text_message(-5),
+    content="DPD code -5 is not a 10-bit code (0..1023)",
+  )
+  // The whole domain still works, including both ends, and the top code is still
+  // the redundant one it always was.
+  let (d1, d2, d3) = dpd_decode3(1023)
+  inspect(d1, content="9")
+  inspect(d2, content="9")
+  inspect(d3, content="9")
+  inspect(dpd_decode3_checked(1023).3, content="true")
+  inspect(dpd_decode3_checked(255).3, content="false")
+  inspect(dpd_is_canonical(0), content="true")
+  inspect(dpd_triple_text(1023), content="9,9,9")
+}
+
+///|
+/// Outcome helper: `"ok"` when the whole domain decodes, otherwise the first
+/// failure, so a regression that rejects a legal code shows up here too.
+fn dpdp_message_ok() -> String raise BitnumError {
+  for bits in 0..<1024 {
+    let (d1, d2, d3) = dpd_decode3(bits)
+    if d1 < 0 || d1 > 9 || d2 < 0 || d2 > 9 || d3 < 0 || d3 > 9 {
+      return "bad digits at \{bits}"
+    }
+  }
+  "ok"
+}
+
+///|
+fn dpd_decode_message(bits : Int32) -> String {
+  try {
+    let _ = dpd_decode3(bits)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+}
+
+///|
+fn dpd_checked_message(bits : Int32) -> String {
+  try {
+    let _ = dpd_decode3_checked(bits)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+}
+
+///|
+fn dpd_canonical_message(bits : Int32) -> String {
+  try {
+    let _ = dpd_is_canonical(bits)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+}
+
+///|
+fn dpd_text_message(bits : Int32) -> String {
+  try {
+    let _ = dpd_triple_text(bits)
+    "no error"
+  } catch {
+    e => e.describe()
+  }
+}

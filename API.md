@@ -233,12 +233,24 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 ```moonbit
 pub let dpd_redundant_codes : Array[Int]      // 24 个，升序
 
-pub fn dpd_encode3(Int, Int, Int) -> Int                       // 10 位
-pub fn dpd_decode3(Int) -> (Int, Int, Int)                      // 全 1024 输入无 panic
-pub fn dpd_decode3_checked(Int) -> (Int, Int, Int, Bool)        // 第 4 项 = 是否冗余
-pub fn dpd_is_canonical(Int) -> Bool
-pub fn dpd_triple_text(Int) -> String                           // "8,8,8"
+pub fn dpd_encode3(Int, Int, Int) -> Int                       // 10 位；前置条件：每个数字 0..9
+pub fn dpd_decode3(Int) -> (Int, Int, Int) raise BitnumError    // 域 0..1023，域外拒绝
+pub fn dpd_decode3_checked(Int) -> (Int, Int, Int, Bool) raise BitnumError  // 第 4 项 = 是否冗余
+pub fn dpd_is_canonical(Int) -> Bool raise BitnumError
+pub fn dpd_triple_text(Int) -> String raise BitnumError         // "8,8,8"
 ```
+
+**decode 侧显式检查十位域**（2026-11-17 审计）。方程读的是 `bits >> 9 .. bits >> 0`，
+所以更宽的实参原先被**静默截成低 10 位**：`dpd_decode3(1024)` 答 `(0, 0, 0)` ——
+这是关于 1024 低位的陈述，不是关于 DPD 码的；`dpd_triple_text(1024)` 因此说
+`"0,0,0"`、`dpd_is_canonical(1024)` 说 `false`。API 写明的域是十位，替调用方发明
+输入正是 PLAN.md §1.2 禁止的方向。全库没有内部调用依赖这个截断（wire 层的 code 来自
+`big_slice(raw, shift, 10)`，值域按构造是 `0..1023`），所以掩码核心挪进私有
+`dpd_decode10`（前置条件 `0 <= bits <= 1023`），四个公开入口先 `check_code` 再解码，
+域外报 `DpdCodeOutOfRange(code)` / `DPD code 1024 is not a 10-bit code (0..1023)`。
+
+`dpd_encode3` 保持**已声明的库级前置条件**（每个数字 `0..9`），与 2026-11-15 的裁定
+一致：这次修的是同一份裁定里 decode 的那一半。
 
 用 **Cowlishaw 布尔方程**，不是 1000 项查表（PLAN.md §4.2）。理由是可审计性：
 方程能逐行对照标准表格，查表只能和另一张表对差。
@@ -448,18 +460,23 @@ pub(all) suberror BitnumError {
   TruncatedInput(Int, Int)                  // 需要, 实际
   NanPayloadTooLarge(Int, Int)              // payload 位宽, 容器容量
   DpdDigitGroupMisaligned(Int)              // 分组长度不是 3 的倍数
+  DpdCodeOutOfRange(Int)                    // DPD 码不在 0..1023（2026-11-17 追加）
 } derive(Debug)
 
 pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 不会漂移
 ```
 
 每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
-`DpdDigitGroupMisaligned` 是对 PLAN.md §5 的追加，与 copybook 的
+`DpdDigitGroupMisaligned` 与 `DpdCodeOutOfRange` 都是对 PLAN.md §5 的追加，与 copybook 的
 `RecordRemainder` 同类 —— 属于补充而非签名变更。当前编解码路径不会抛出
 `DpdRedundantCodeAccepted` / `CombinationInvalid` / `DpdDigitGroupMisaligned`：
 冗余 DPD 通过 `DecodedDecimal::redundant_groups` 报告，32 种组合字段均有定义，
 线格式内部也没有独立的数字缓冲区入口。它们是公开错误词汇，不应被算作
 「当前实现可达且已有回归」的分支。
+
+`DpdCodeOutOfRange` 相反：**它是可达的**，由四个公开 DPD 入口在实参不在 `0..1023` 时抛出
+（2026-11-17 审计，见 §5）。这正是它与 `DpdDigitGroupMisaligned` 的区别 —— 后者是词汇，
+前者是当前实现真的会说的话。
 
 **两个指数变体不是重复**（BN-B5，修复自 2026-11-10 审计）。编码器守两道独立的门：
 

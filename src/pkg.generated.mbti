@@ -47,17 +47,17 @@ pub fn describe_decimal(DecimalFormat, @bigint.BigInt) -> String raise BitnumErr
 
 pub fn digit_count_big(@bigint.BigInt) -> Int32
 
-pub fn dpd_decode3(Int32) -> (Int32, Int32, Int32)
+pub fn dpd_decode3(Int32) -> (Int32, Int32, Int32) raise BitnumError
 
-pub fn dpd_decode3_checked(Int32) -> (Int32, Int32, Int32, Bool)
+pub fn dpd_decode3_checked(Int32) -> (Int32, Int32, Int32, Bool) raise BitnumError
 
 pub fn dpd_encode3(Int32, Int32, Int32) -> Int32
 
-pub fn dpd_is_canonical(Int32) -> Bool
+pub fn dpd_is_canonical(Int32) -> Bool raise BitnumError
 
 pub let dpd_redundant_codes : Array[Int32]
 
-pub fn dpd_triple_text(Int32) -> String
+pub fn dpd_triple_text(Int32) -> String raise BitnumError
 
 pub fn format_double(Double) -> String
 
@@ -106,6 +106,7 @@ pub(all) suberror BitnumError {
   TruncatedInput(Int32, Int32)
   NanPayloadTooLarge(Int32, Int32)
   DpdDigitGroupMisaligned(Int32)
+  DpdCodeOutOfRange(Int32)
 }
 pub fn BitnumError::describe(Self) -> String
 

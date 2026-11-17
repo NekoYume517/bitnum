@@ -36,7 +36,10 @@ pub let dpd_redundant_codes : Array[Int32] = [
 
 ///|
 /// Whether a 10-bit code is one the encoder can produce.
-pub fn dpd_is_canonical(bits : Int32) -> Bool {
+///
+/// `raise` for the same reason as `dpd_decode3`: a code outside `0..1023` is not a
+/// DPD code, and answering `false` would describe the argument instead of refusing it.
+pub fn dpd_is_canonical(bits : Int32) -> Bool raise BitnumError {
   let (d1, d2, d3) = dpd_decode3(bits)
   dpd_encode3(d1, d2, d3) == bits
 }
@@ -93,7 +96,36 @@ pub fn dpd_encode3(d1 : Int32, d2 : Int32, d3 : Int32) -> Int32 {
 /// designed so that every bit pattern resolves to *some* digit triple, and for
 /// the redundant codes that triple is the documented 8/9 sequence. Callers who
 /// need to know whether the input was canonical use `dpd_is_canonical`.
-pub fn dpd_decode3(bits : Int32) -> (Int32, Int32, Int32) {
+///
+/// The argument is checked to be ten bits wide (2026-11-17 audit). The equations
+/// read `bits >> 9 .. bits >> 0`, so a wider argument used to be silently masked
+/// to its low ten bits: `dpd_decode3(1024)` answered `(0, 0, 0)`, which is a
+/// statement about 1024's low bits rather than about a DPD code — the decoder
+/// inventing an input, the one direction PLAN.md §1.2 forbids. No internal caller
+/// relied on the mask (the wire codec passes `big_slice(raw, shift, 10)`, whose
+/// range is `0..1023` by construction), so the masked core is now the private
+/// `dpd_decode10` and every public entry point checks first. `dpd_encode3` keeps
+/// its documented library-level precondition, unchanged since the 2026-11-15
+/// audit: this is the decode half of that ruling.
+pub fn dpd_decode3(bits : Int32) -> (Int32, Int32, Int32) raise BitnumError {
+  check_code(bits)
+  dpd_decode10(bits)
+}
+
+///|
+/// The ten-bit domain check every public DPD entry point runs first.
+fn check_code(bits : Int32) -> Unit raise BitnumError {
+  if bits < 0 || bits > 1023 {
+    raise DpdCodeOutOfRange(bits)
+  }
+}
+
+///|
+/// The masked core: **precondition** `0 <= bits <= 1023`.
+///
+/// Private because the precondition is what makes the shifts mean anything; it has
+/// exactly one caller plus the public wrapper above.
+fn dpd_decode10(bits : Int32) -> (Int32, Int32, Int32) {
   let p = (bits >> 9) & 1
   let q = (bits >> 8) & 1
   let r = (bits >> 7) & 1
@@ -139,7 +171,9 @@ fn n(z : Int32) -> Int32 {
 /// This is the entry point the decimal wire layer uses, because the standard
 /// requires the redundant codes to be *accepted* (not rejected, not silently
 /// replaced) while still being distinguishable for auditing.
-pub fn dpd_decode3_checked(bits : Int32) -> (Int32, Int32, Int32, Bool) {
+pub fn dpd_decode3_checked(
+  bits : Int32,
+) -> (Int32, Int32, Int32, Bool) raise BitnumError {
   let (d1, d2, d3) = dpd_decode3(bits)
   let redundant = dpd_encode3(d1, d2, d3) != bits
   (d1, d2, d3, redundant)
@@ -149,7 +183,7 @@ pub fn dpd_decode3_checked(bits : Int32) -> (Int32, Int32, Int32, Bool) {
 /// Render the digit triple of a redundant code as the standard spells it, e.g.
 /// `"8,8,8"`. Used in error/audit output so a report names the sequence instead
 /// of just the code.
-pub fn dpd_triple_text(bits : Int32) -> String {
+pub fn dpd_triple_text(bits : Int32) -> String raise BitnumError {
   let (d1, d2, d3) = dpd_decode3(bits)
   "\{d1},\{d2},\{d3}"
 }

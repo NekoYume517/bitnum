@@ -65,6 +65,13 @@ pub(all) suberror BitnumError {
   /// A decimal digit buffer whose length is not a multiple of three, which no
   /// DPD continuation field can hold.
   DpdDigitGroupMisaligned(Int32)
+  /// A DPD code outside the ten-bit domain `0..1023`.
+  ///
+  /// The decode side reads `bits >> 9 .. bits >> 0`, so a wider argument used to be
+  /// masked instead of refused: `dpd_decode3(1024)` answered `(0, 0, 0)`, a statement
+  /// about 1024's low bits rather than about a DPD code. `code` is the argument as
+  /// given, so the report names the number the caller wrote (2026-11-17 audit).
+  DpdCodeOutOfRange(Int32)
 }
 
 ///|
@@ -89,5 +96,6 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
       "NaN payload needs \{width} bits, container holds \{capacity}"
     DpdDigitGroupMisaligned(len) =>
       "digit buffer length \{len} is not a multiple of 3"
+    DpdCodeOutOfRange(code) => "DPD code \{code} is not a 10-bit code (0..1023)"
   }
 }
