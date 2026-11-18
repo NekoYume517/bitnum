@@ -261,7 +261,7 @@ pub(all) struct FloatConversion {
 
 ```
 $ moon test
-Total tests: 144, passed: 144, failed: 0.
+Total tests: 146, passed: 146, failed: 0.
 ```
 
 ## 证据
