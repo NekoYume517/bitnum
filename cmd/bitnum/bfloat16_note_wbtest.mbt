@@ -214,3 +214,35 @@ test "bits: the binary32 note starts at the f32 infinity, not at max finite" {
     BitsRejected(r) => inspect(r, content="unexpected rejection")
   }
 }
+
+///|
+/// The first narrowing can round to an ordinary finite binary32 value. If that
+/// value then happens to be an exact bfloat16, `of_f32.inexact` is false even
+/// though the literal as a whole was rounded. Widening the narrowed Float back
+/// to Double is exact, so comparing it with the original detects precisely this
+/// missing first step without threshold guesses.
+test "bits: bfloat16 reports finite binary32 rounding even when step two is exact" {
+  match bfloat16_bits("16777217") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="4B80")
+      inspect(note, content="rounded (inexact)")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // Exact through both steps: no diagnostic.
+  match bfloat16_bits("16777216") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="4B80")
+      inspect(note, content="")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+  // Exact through binary32 but rounded by bfloat16: the old diagnostic remains.
+  match bfloat16_bits("16777218") {
+    BitsHex(hex, note) => {
+      inspect(hex, content="4B80")
+      inspect(note, content="rounded (inexact)")
+    }
+    BitsRejected(r) => inspect(r, content="unexpected rejection")
+  }
+}

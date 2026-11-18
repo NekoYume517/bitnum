@@ -519,10 +519,19 @@ fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
     )
   }
   let conv = @lib.of_f32(narrowed, @lib.NearestEven)
-  BitsHex(
-    hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)),
-    bits_note(conv, overflow, text),
-  )
+  // The first step can also round to an ordinary finite binary32 value which is
+  // then an exact bfloat16. Widening that Float back to Double is exact, so this
+  // comparison detects the otherwise-hidden first step. NaN is excluded because
+  // its payload is the codec's business, not a numeric inequality to diagnose.
+  let first_narrowing_inexact = not(overflow) &&
+    not(x.is_nan()) &&
+    narrowed.to_double() != x
+  let note = if first_narrowing_inexact {
+    "rounded (inexact)"
+  } else {
+    bits_note(conv, overflow, text)
+  }
+  BitsHex(hex_of_bytes(word_to_bytes(conv.bits.to_uint(), 2)), note)
 }
 
 ///|
