@@ -119,6 +119,35 @@ test "from_hex: a non-hex character is a parse failure, not a rounding" {
 }
 
 ///|
+/// An astral non-hex scalar occupies two UTF-16 code units. The loop must reject
+/// its high surrogate as a non-hex character and never unwrap the low surrogate's
+/// `None`. Cover the same input family at all three decimal widths, mirroring the
+/// binary CLI's `hex_input_wbtest.mbt` guard without changing this total parser.
+test "from_hex: an astral non-hex character is rejected at every width" {
+  let cases : Array[(DecimalFormat, String)] = [
+    (Decimal32, "000000🐛"),
+    (Decimal64, "00000000000000🐛"),
+    (Decimal128, "000000000000000000000000000000🐛"),
+  ]
+  for entry in cases {
+    let (format, text) = entry
+    let result = try {
+      let _ = format.from_hex(text)
+      "no error"
+    } catch {
+      UnparsableInput(actual, why) =>
+        if actual == text && why == "non-hex character" {
+          "rejected"
+        } else {
+          "wrong rejection: \{actual} / \{why}"
+        }
+      e => "wrong error variant: \{e.describe()}"
+    }
+    inspect(result, content="rejected")
+  }
+}
+
+///|
 /// An exponent marker with nothing after it has no sign to blame. Keep that
 /// distinct from an explicit `+` or `-` with no following digits.
 test "parse_decimal: a missing exponent does not invent a sign" {
