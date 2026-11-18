@@ -359,7 +359,9 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
 /// exponent representation. `1.0` and `1.00` are numerically equal but not
 /// bit-identically equal as triples; the standard keeps them distinct, and so
 /// does this package — which is why both comparisons exist and neither is called
-/// just `equal`.
+/// just `equal`. Infinity compares by sign alone: its coefficient and exponent
+/// carry no value, including in a hand-built public datum. NaN comparisons keep
+/// their sign and diagnostic payload significant.
 pub fn numerically_equal(a : Decimal, b : Decimal) -> Bool {
   if a.kind != b.kind {
     return false
@@ -376,7 +378,9 @@ pub fn numerically_equal(a : Decimal, b : Decimal) -> Bool {
       }
       av.equal(bv) && a.adjusted_exponent() == b.adjusted_exponent()
     }
-    _ => a.negative == b.negative && a.coefficient.equal(b.coefficient)
+    DInfinity => a.negative == b.negative
+    DNan | DSignalingNan =>
+      a.negative == b.negative && a.coefficient.equal(b.coefficient)
   }
 }
 

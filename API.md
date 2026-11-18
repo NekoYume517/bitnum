@@ -236,7 +236,9 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 `numerically_equal` 比较数值而非三元组同一性：忽略尾随零填充（`1.0` 与 `1.00`
 数值相等）；非零值的符号不同则不等，±0 按数值相等。标准把 `1.0` 和 `1.00`
 当作不同三元组，本包也在 `Decimal` 中原样保留符号、系数和指数，所以派生的 `Eq`
-与这个数值比较函数都存在，没有一个叫裸 `equal`。
+与这个数值比较函数都存在，没有一个叫裸 `equal`。同号 Infinity 数值相等，公开手工
+结构中无意义的 coefficient / exponent 不参与比较；NaN 仍按符号与 diagnostic payload
+比较（2026-11-19 同族域复核）。
 
 ## 5. DPD `src/dpd.mbt`
 
