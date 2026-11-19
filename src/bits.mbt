@@ -146,11 +146,17 @@ pub fn bit_length_big(v : BigInt) -> Int32 {
 /// caught by the caller — the process dies. It is the same "state the domain"
 /// question `to_hex` and `low_mask64` answer, applied to the other dimension.
 pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
-  if offset < 0 || width <= 0 {
+  let value_bits = v.bit_length()
+  if offset < 0 || width <= 0 || offset >= value_bits {
     return BigInt::from_int(0)
   }
   let shifted = v >> offset
-  BigInt::land(shifted, (BigInt::from_int(1) << width) - BigInt::from_int(1))
+  let remaining = value_bits - offset
+  if width >= remaining {
+    shifted
+  } else {
+    BigInt::land(shifted, (BigInt::from_int(1) << width) - BigInt::from_int(1))
+  }
 }
 
 ///|
