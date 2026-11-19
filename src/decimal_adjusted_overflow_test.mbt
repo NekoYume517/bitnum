@@ -45,3 +45,43 @@ test "decimal: adjusted exponent keeps its ordinary values" {
     content="false",
   )
 }
+
+///|
+/// Zero has no coefficient digits to widen its adjusted exponent, but its public
+/// renderer still carries the full Int32 exponent without negation or wraparound.
+test "decimal adjusted: zero rendering at both Int32 exponent endpoints" {
+  inspect(
+    Decimal::zero(false, -2147483648).to_scientific_string(),
+    content="0E-2147483648",
+  )
+  inspect(
+    Decimal::zero(false, 2147483647).to_scientific_string(),
+    content="0E+2147483647",
+  )
+}
+
+///|
+/// Trailing-zero normalization composes with the Int64 adjusted-exponent guard.
+test "decimal adjusted: trailing zeros at both exponent endpoints" {
+  inspect(
+    numerically_equal(
+      parse_decimal("10e2147483646"),
+      parse_decimal("1e2147483647"),
+    ),
+    content="true",
+  )
+  inspect(
+    numerically_equal(
+      parse_decimal("10e-2147483648"),
+      parse_decimal("1e-2147483647"),
+    ),
+    content="true",
+  )
+  inspect(
+    numerically_equal(
+      parse_decimal("1e2147483647"),
+      parse_decimal("1e-2147483648"),
+    ),
+    content="false",
+  )
+}

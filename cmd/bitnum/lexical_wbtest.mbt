@@ -129,6 +129,8 @@ test "bits: the binary-format lexer rejects these spellings" {
     // number.
      "0x10", "0X10", "0b101", "0x1p3", "1,000", "  1.0", "1.0 ", "1.0e", "--1", ".",
     "e3", "xyz", "1.2.3", "",
+    // Non-ASCII input is rejected before any zero/underflow text scan.
+     "0🐛", "1e1🐛", "ß",
   ]
   for lit in rejected {
     match binary16_bits(lit) {

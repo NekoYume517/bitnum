@@ -148,6 +148,60 @@ test "from_hex: an astral non-hex character is rejected at every width" {
 }
 
 ///|
+/// Full Unicode uppercase mappings can expand one BMP scalar into several ASCII
+/// characters (`ﬀ` has a full mapping to `FF`). Hex decoding must nevertheless
+/// reject the caller's non-ASCII text rather than parsing the expansion as digits.
+/// Keep ordinary mixed-case ASCII acceptance beside that guard.
+test "from_hex: BMP uppercase expansions never become hex digits" {
+  let f : DecimalFormat = Decimal32
+  for text in ["ﬀ0000000", "ß0000000"] {
+    let result = try {
+      let _ = f.from_hex(text)
+      "accepted"
+    } catch {
+      UnparsableInput(actual, why) =>
+        if actual == text && why == "non-hex character" {
+          "rejected"
+        } else {
+          "wrong rejection: \{actual} / \{why}"
+        }
+      e => "wrong error variant: \{e.describe()}"
+    }
+    inspect(result, content="rejected")
+  }
+  inspect(f.to_hex(f.from_hex("aAbBcCdD")), content="AABBCCDD")
+}
+
+///|
+/// Decimal scanning consumes Unicode scalars by their UTF-16 offsets. An astral
+/// scalar must be rejected at its first code unit, never unwrapped at the second.
+test "parse_decimal: astral input is a lexical error at every position" {
+  let cases = [
+    ("🐛", "no digits"),
+    ("1🐛", "junk after the number"),
+    ("1e🐛", "junk after the exponent"),
+    ("1e+🐛", "junk after the exponent"),
+    ("1e1🐛", "junk after the exponent"),
+  ]
+  for entry in cases {
+    let (text, expected) = entry
+    let verdict = try {
+      let _ = parse_decimal(text)
+      "accepted"
+    } catch {
+      UnparsableInput(actual, why) =>
+        if actual == text && why == expected {
+          "rejected"
+        } else {
+          "wrong rejection: \{actual} / \{why}"
+        }
+      e => "wrong error variant: \{e.describe()}"
+    }
+    inspect(verdict, content="rejected")
+  }
+}
+
+///|
 /// An exponent marker with nothing after it has no sign to blame. Keep that
 /// distinct from an explicit `+` or `-` with no following digits.
 test "parse_decimal: a missing exponent does not invent a sign" {

@@ -47,3 +47,20 @@ test "hex input: an astral-plane character is rejected, not a panic" {
     None => inspect("rejected", content="parsed")
   }
 }
+
+///|
+/// Full Unicode uppercase mappings must not expand caller text into ASCII hex.
+/// `ﬀ` has a full mapping to `FF`; four copies still occupy exactly four UTF-16
+/// code units and must be rejected rather than interpreted as binary16 `FFFF`.
+test "hex input: BMP uppercase expansions are not ASCII hex" {
+  for text in ["ﬀﬀﬀﬀ", "ßßßß"] {
+    match parse_hex_bytes(text) {
+      Some(_) => inspect("accepted", content="rejected")
+      None => inspect("rejected", content="rejected")
+    }
+  }
+  match parse_hex_bytes("aAbB") {
+    Some(b) => inspect(bytes_to_u16(b).to_int(), content="43707")
+    None => inspect("rejected", content="parsed")
+  }
+}
