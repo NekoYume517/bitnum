@@ -176,7 +176,11 @@ pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
 /// and invents no arithmetic of its own.
 pub fn big_splice(from : BigInt, to : BigInt, width : Int32) -> BigInt {
   let w = if width < 0 { 0 } else { width }
-  BigInt::lor(from << w, to)
+  if from.is_zero() {
+    to
+  } else {
+    BigInt::lor(from << w, to)
+  }
 }
 
 ///|
