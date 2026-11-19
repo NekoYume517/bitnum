@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 146, passed: 146, failed: 0.
+Total tests: 157, passed: 157, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -612,10 +612,10 @@ exit=0
 
 ```
 $ moon test
-Total tests: 146, passed: 146, failed: 0.
+Total tests: 157, passed: 157, failed: 0.
 ```
 
-146 条测试的覆盖规模（不是"146 个断言"，是 146 条测试里有几条是穷举）：
+157 条测试的覆盖规模（不是"157 个断言"，是 157 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -629,6 +629,7 @@ Total tests: 146, passed: 146, failed: 0.
 | 十进制向量 | **568**（496 精确 + 72 冗余），全部有限值；另断言「表里没有 `11110`/`11111` 行」 |
 | 十进制向量原文渲染 | **568** 行的 `original_text` 列逐字符 |
 | 组合字段 × 指数续域全空间 | **565248** 个模式（3 宽度 × 32 组合 × 全部指数续域 × 4 种系数续域）的 decode→encode |
+| 位窗与 Unicode 边界 | 空窗 / 有效宽度截断 / 零被移数的 INT32_MAX 宽度；BMP 大写展开、astral 与混合 ASCII |
 | `table` 报告 | **5** 个格式的报告逐字节对齐 DEMO / README 引用的围栏块 |
 | 渲染口径矩阵 | **5** 格式 × 6 个 datum 的 `value` token（`0` / `-0` / `±Infinity` / `NaN` / `-NaN`） |
 | 最大有限值之上的中点 | 2 格式 × 5 模式 × 双符号（B4 补的那一格） |
