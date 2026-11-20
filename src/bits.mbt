@@ -134,17 +134,29 @@ pub fn bit_length_big(v : BigInt) -> Int32 {
 }
 
 ///|
-/// Bits `[offset, offset + width)` of a BigInt, as a non-negative BigInt.
+/// Bits `[offset, offset + width)` of a **non-negative** BigInt, as a non-negative
+/// BigInt.
 ///
-/// The window is **total** (2026-11-17 audit, BN-o). A non-negative integer has
-/// no bits below bit 0 and none past its most significant set bit, so every
-/// window that leaves the number's own bit string is empty — a negative
-/// `offset`, a negative `width`, or a start past the end. Only one of those three
-/// used to be answered: `width < 0` returned zero while a negative `offset`
+/// The window is **total** (2026-11-17 audit, BN-o) in both `offset` and `width`: a
+/// non-negative integer has no bits below bit 0 and none past its most significant
+/// set bit, so every window that leaves the number's own bit string is empty — a
+/// negative `offset`, a negative `width`, or a start past the end. Only one of those
+/// three used to be answered: `width < 0` returned zero while a negative `offset`
 /// reached `BigInt::shr`, which raises core's `negative shift count`. Since this
 /// function returns a `BigInt` and is not declared `raise`, that error cannot be
 /// caught by the caller — the process dies. It is the same "state the domain"
 /// question `to_hex` and `low_mask64` answer, applied to the other dimension.
+///
+/// The **value** direction is declared here and nowhere else: `v >= 0`. A negative
+/// BigInt has no most significant set bit to stop at — its two's-complement form is an
+/// infinite string of ones — so the empty-window reasoning above describes nothing for
+/// it, and `bit_length()` does not even agree with itself (`-1` answers 0, `-6`
+/// answers 3). What the code then returns (`0`, the arithmetic shift's own negative
+/// value, or a masked window, depending on the arguments) is not one rule, and this
+/// function has no `raise` channel to reject the input with. Every caller in this
+/// package hands over a non-negative value: `decode_raw` is the only producer of wire
+/// bits and it rejects a negative pattern before any slicing (2026-11-21 audit), so
+/// this is a declared precondition — the same shape as `dpd_encode3`'s digit range.
 pub fn big_slice(v : BigInt, offset : Int32, width : Int32) -> BigInt {
   let value_bits = v.bit_length()
   if offset < 0 || width <= 0 || offset >= value_bits {
