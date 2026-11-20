@@ -36,10 +36,11 @@ pub fn describe_binary16(bits : UInt16) -> String {
 /// interpretation and not just the digits. Empty for everything else: inventing a
 /// comment for arbitrary patterns would be noise.
 ///
-/// The `(-0)` / `(0)` pair restates what the value text now spells (`value=-0` /
-/// `value=0`); it is kept so the annotation set stays symmetrical with
-/// `(-infinity)` / `(infinity)`. Before 2026-11-17 the annotation was the *only*
-/// place negative zero survived in `value`, which is why it was introduced.
+/// Every hint carries the datum's sign, because every hint names a *value*: `(-0)`,
+/// `(-infinity)`, `(-2^1)`. The zero and infinity pairs always did; the power-of-two
+/// hints did not, which printed `value=-2   (2^1)` — one line disagreeing with itself
+/// about the sign. The `(-0)` / `(0)` pair now only restates what the value text
+/// spells, and is kept so the set stays symmetrical.
 fn annotate_binary16(d : Binary16) -> String {
   if d.kind == Zero {
     if d.sign == 1 {
@@ -47,20 +48,30 @@ fn annotate_binary16(d : Binary16) -> String {
     } else {
       "   (0)"
     }
-  } else if d.kind == Subnormal && d.significand == 1 {
-    "   (2^-24)"
-  } else if d.kind == Normal && d.significand == 0 && d.exponent == 15 {
-    "   (2^0)"
-  } else if d.kind == Normal && d.significand == 0 {
-    "   (2^\{d.exponent - 15})"
   } else if d.kind == Infinity {
     if d.sign == 1 {
       "   (-infinity)"
     } else {
       "   (infinity)"
     }
+  } else if d.kind == Subnormal && d.significand == 1 {
+    signed_hint(d.sign, "2^-24")
+  } else if d.kind == Normal && d.significand == 0 {
+    // `exponent == 15` gives `2^0` without a special case.
+    signed_hint(d.sign, "2^\{d.exponent - 15}")
   } else {
     ""
+  }
+}
+
+///|
+/// One parenthetical hint, with the sign inside the parentheses the way `(-0)` and
+/// `(-infinity)` spell theirs.
+fn signed_hint(sign : Int32, body : String) -> String {
+  if sign == 1 {
+    "   (-" + body + ")"
+  } else {
+    "   (" + body + ")"
   }
 }
 
@@ -96,9 +107,9 @@ pub fn describe_bfloat16(bits : UInt16) -> String {
 
 ///|
 /// The annotation set for bfloat16, mirroring `annotate_binary16`: negative
-/// zero, infinities, the min subnormal, and exact powers of two. The value text
-/// spells both zeroes itself (`value=0` / `value=-0`), so the `(0)` / `(-0)`
-/// pair only restates it — kept for symmetry with the infinity pair.
+/// zero, infinities, the min subnormal, and exact powers of two. Every hint carries
+/// the datum's sign (`(-0)`, `(-infinity)`, `(-2^1)`), for the same reason as the
+/// binary16 set: one line must not disagree with itself about the sign.
 fn annotate_bfloat16(d : BFloat16) -> String {
   if d.kind == Zero {
     if d.sign == 1 {
@@ -106,16 +117,16 @@ fn annotate_bfloat16(d : BFloat16) -> String {
     } else {
       "   (0)"
     }
-  } else if d.kind == Subnormal && d.significand == 1 {
-    "   (2^-133)"
-  } else if d.kind == Normal && d.significand == 0 {
-    "   (2^\{d.exponent - 127})"
   } else if d.kind == Infinity {
     if d.sign == 1 {
       "   (-infinity)"
     } else {
       "   (infinity)"
     }
+  } else if d.kind == Subnormal && d.significand == 1 {
+    signed_hint(d.sign, "2^-133")
+  } else if d.kind == Normal && d.significand == 0 {
+    signed_hint(d.sign, "2^\{d.exponent - 127}")
   } else {
     ""
   }
