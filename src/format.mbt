@@ -213,10 +213,10 @@ pub fn datum_class_label(kind : FloatClass) -> String {
 /// Render a Double the way the `value` line wants it: plain for integers and
 /// ordinary magnitudes, scientific for the extremes.
 ///
-/// The exponent is padded to at least two digits (`e-08`, not `e-8`) to match the
-/// spelling in PLAN.md §7's worked example, which is the binding form for this
-/// output. `Double::to_string` emits a single digit, so the padding is applied here
-/// rather than by using the platform formatter.
+/// The exponent is padded to at least two digits (`e-08`, `e+08`, not `e-8`) to
+/// match the spelling in PLAN.md §7's worked example, which is the binding form for
+/// this output. `Double::to_string` emits a single digit on the negative side, so the
+/// padding is applied here rather than by using the platform formatter.
 pub fn format_double(x : Double) -> String {
   if x.is_nan() {
     "NaN"
@@ -230,11 +230,21 @@ pub fn format_double(x : Double) -> String {
 }
 
 ///|
-/// Pad a single-digit exponent to two digits: `5.9e-8` -> `5.9e-08`.
+/// Pad a single-digit exponent to two digits: `5.9e-8` -> `5.9e-08`, `1e+8` ->
+/// `1e+08`.
 ///
 /// Only the exponent tail is touched, and only when it is one or two characters
 /// wide, so a mantissa containing the letter `e` (impossible in decimal output, but
 /// cheap to rule out) cannot be mangled.
+///
+/// Both signs are recognized. Today only the negative side needs the padding —
+/// `Double::to_string` switches to scientific notation at `1e21`, so a positive
+/// exponent it emits is already two digits (`e+21`, `e+38`) — and that is exactly
+/// why the `+` branch has to be spelled out rather than inferred: `"+21"` is three
+/// characters wide and would have slid through the length test, so the one-digit
+/// positive case (`"+8"`) would have printed `e+8` while the negative side printed
+/// `e-08`. Padding both signs keeps the "at least two digits" rule a rule, not a
+/// coincidence of today's threshold.
 fn pad_exponent(text : String) -> String {
   let marker = find_exponent_marker(text)
   if marker < 0 {
@@ -242,12 +252,21 @@ fn pad_exponent(text : String) -> String {
   }
   let head = text[0:marker].to_owned()
   let tail = text[marker + 1:text.length()].to_owned()
-  let sign = if tail.length() > 0 && tail.get_char(0).unwrap() == '-' {
-    "-"
-  } else {
-    ""
+  let mut sign = ""
+  let mut digits = tail
+  if tail.length() > 0 {
+    match tail.get_char(0) {
+      Some('-') => {
+        sign = "-"
+        digits = tail[1:].to_owned()
+      }
+      Some('+') => {
+        sign = "+"
+        digits = tail[1:].to_owned()
+      }
+      _ => ()
+    }
   }
-  let digits = if sign == "" { tail } else { tail[1:].to_owned() }
   if digits.length() >= 2 {
     head + "e" + sign + digits
   } else {
