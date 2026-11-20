@@ -66,6 +66,12 @@ pub fn BFloat16::decode(bits : UInt16) -> BFloat16 {
 
 ///|
 /// Reassemble the pattern from its fields; lossless by construction.
+///
+/// **Declared precondition for a hand-built struct** (2026-11-21 audit): `sign` is
+/// 0 or 1, `exponent` is 0..255, `significand` is 0..127. The fields are public and
+/// this function has no `raise` channel: it does not validate and it does not
+/// normalise, it ORs the fields and keeps the low 16 bits. `kind` is not read — it is
+/// `decode`'s conclusion, not an input. Pinned by `encode_precondition_test.mbt`.
 pub fn BFloat16::encode(self : BFloat16) -> UInt16 {
   let u = (self.sign << 15) | (self.exponent << 7) | self.significand
   u.to_uint16()

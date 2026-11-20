@@ -71,6 +71,15 @@ pub fn Binary16::decode(bits : UInt16) -> Binary16 {
 /// Reassemble the bit pattern from its fields. This is the *only* encoder for
 /// binary16, so `decode → encode` holds for all 65536 patterns by construction:
 /// the decoder is field-for-field lossless.
+///
+/// **Declared precondition for a hand-built struct** (2026-11-21 audit): `sign` is
+/// 0 or 1, `exponent` is 0..31, `significand` is 0..1023. The fields are public, so a
+/// caller can build a register no pattern decodes to, and this function has no
+/// `raise` channel: it does not validate and it does not normalise — it ORs the
+/// fields and keeps the low 16 bits, which is what a bit reassembly is. `kind` is not
+/// read at all; it is `decode`'s conclusion, not an input. Same shape as
+/// `dpd_encode3`'s digit range, and the out-of-range result is pinned by
+/// `encode_precondition_test.mbt` so nobody can mistake it for a normalisation.
 pub fn Binary16::encode(self : Binary16) -> UInt16 {
   let u = (self.sign << 15) | (self.exponent << 10) | self.significand
   u.to_uint16()

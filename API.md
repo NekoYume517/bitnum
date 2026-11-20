@@ -116,6 +116,15 @@ pub fn Binary16::nan_payload(Binary16) -> Int
 解码器**总是**报告存储的原始域，不把指数规范化。这是 `kind` 保持诚实的原因：
 一次解码不会凭空造出一个正规化指数。
 
+**手工构造的字段寄存器不做 datum 校验**（2026-11-21 审计）。`sign` / `exponent` /
+`significand` 是公开字段，而 `encode` 没有 `raise` 通道，所以它**只**把字段 OR 起来
+并保留低 16 位：不校验、不规范化，`kind` 完全不读（`kind` 是 `decode` 的结论，不是
+输入）。声明的前置条件：`sign ∈ {0,1}`、`exponent` 0..31（bfloat16 0..255）、
+`significand` 0..1023（bfloat16 0..127）。`src/encode_precondition_test.mbt` 把越界
+结果钉成事实 —— 例如 `Binary16{sign:2, exponent:99, significand:5000}` 编成 `0x9F88`，
+解码成普通的 `1/7/904`。这不改架构：二进制侧真正的 datum 通道是 `decode → encode`，
+它对全部 65536 个模式成立；加一道 raise 只会为手工数据改掉整个编码器签名。
+
 `of_f64` 的溢出规则（PLAN.md §2）：就近模式 → ±Inf；`TowardZero` → ±max。
 `Towards...` 定向模式只有在方向指向远离零时才溢出到 Inf。
 
