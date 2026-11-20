@@ -110,25 +110,34 @@ pub fn DecimalFormat::name(self : DecimalFormat) -> String {
 }
 
 ///|
-/// Largest biased exponent **representable in the field**: `2^(exp_cont + 2) - 1`.
+/// Largest value the biased-exponent field can **hold**: `2^(exp_cont + 2) - 1`
+/// (255 / 1023 / 16383). The `+2` is the two exponent bits carried inside the
+/// combination field, so the biased exponent is `exp_cont + 2` bits wide overall.
 ///
-/// Note that the field is wider than the range of legal exponents. That is not an
-/// oversight in this table: the standard reserves the top of the field, and the
-/// legal maximum is `Emax + bias` (197 / 782 / 12320), well below the field
-/// capacity. Encoding a biased exponent above `Emax + bias` is therefore a real
-/// error — the pattern would be legal bits but not a legal number — and it is
-/// rejected by `check_biased` rather than written.
+/// The field is wider than the set of legal exponents, deliberately: its top is
+/// the `111xx` combination, which is the Infinity / NaN branch. A *finite* datum
+/// therefore stops at `3 * 2^exp_cont - 1` biased (`Emax_top + bias`: 191 / 767 /
+/// 12287), and `max_exponent_for` is where that ceiling lives. `Emax + bias`
+/// (197 / 782 / 12320) is neither: it is `Emax`'s own biased encoding, which **no
+/// datum attains**, because reaching `Emax` needs `p` significant digits and
+/// those digits push the exponent back below `Emax_top`.
 ///
-/// The `+2` is the two exponent bits carried inside the combination field, so the
-/// biased exponent is `exp_cont + 2` bits wide overall.
+/// This is the number `check_biased` reports, because that gate asks exactly one
+/// question — does the biased value fit in the field? — and leaves the semantic
+/// ceiling (which needs the digit count) to the gate after it.
 pub fn DecimalFormat::biased_exponent_field_max(self : DecimalFormat) -> Int32 {
   (1 << (self.exp_cont_bits() + 2)) - 1
 }
 
 ///|
-/// Largest *legal* biased exponent, `Emax + bias` (197 / 782 / 12320).
+/// Largest **legal** biased exponent for a finite datum, `Emax_top + bias`
+/// (191 / 767 / 12287), which is `3 * 2^exp_cont - 1`.
+///
+/// Not `Emax + bias`: that value needs `exp_top == 3`, whose slot is the infinity
+/// family, so no finite datum can carry it. The name says "max", and this is the
+/// only number the word can mean.
 pub fn DecimalFormat::biased_exponent_max(self : DecimalFormat) -> Int32 {
-  self.emax() + self.bias()
+  self.emax_top() + self.bias()
 }
 
 ///|
@@ -216,7 +225,7 @@ pub fn DecimalFormat::geometry_is_consistent(self : DecimalFormat) -> Bool {
   match self {
     Decimal32 =>
       self.biased_exponent_field_max() == 255 &&
-      self.biased_exponent_max() == 197 &&
+      self.biased_exponent_max() == 191 &&
       self.emax() == 96 &&
       self.emin() == -95 &&
       self.etin_y() == -101 &&
@@ -224,7 +233,7 @@ pub fn DecimalFormat::geometry_is_consistent(self : DecimalFormat) -> Bool {
       self.max_exponent_for(BigInt::from_int(0)) == 90
     Decimal64 =>
       self.biased_exponent_field_max() == 1023 &&
-      self.biased_exponent_max() == 782 &&
+      self.biased_exponent_max() == 767 &&
       self.emax() == 384 &&
       self.emin() == -383 &&
       self.etin_y() == -398 &&
@@ -232,7 +241,7 @@ pub fn DecimalFormat::geometry_is_consistent(self : DecimalFormat) -> Bool {
       self.max_exponent_for(BigInt::from_int(0)) == 369
     Decimal128 =>
       self.biased_exponent_field_max() == 16383 &&
-      self.biased_exponent_max() == 12320 &&
+      self.biased_exponent_max() == 12287 &&
       self.emax() == 6144 &&
       self.emin() == -6143 &&
       self.etin_y() == -6176 &&
@@ -530,18 +539,27 @@ fn digit_at(text : String, i : Int32) -> Int32 {
 }
 
 ///|
-/// Reject a biased exponent outside the representable range, naming the value and
-/// both bounds (PLAN.md §5).
+/// Reject a biased exponent that does not fit the exponent field, naming the value
+/// and both bounds (PLAN.md §5).
+///
+/// The bound is the **field capacity** (`2^(exp_cont + 2) - 1`), not `Emax + bias`:
+/// this gate asks only whether the biased value fits in the bits, and everything it
+/// admits is then judged on its merits by `max_exponent_for`, which owns the
+/// semantic ceiling and prints the *true* exponent when that is what is wrong.
+/// Narrowing this bound to `Emax_top + bias` would silence that second gate
+/// entirely — the two ceilings would coincide — and would replace
+/// `exponent 97 out of range [-101, 90]` with a biased number the caller never
+/// wrote.
 ///
 /// `biased` arrives as `Int64` because the caller's sum can leave `Int32`; the
-/// bounds are tight and positive, so `Int64` costs nothing here and buys the
+/// bounds are positive and fit `Int32`, so `Int64` costs nothing here and buys the
 /// difference between reporting `2147483748` and reporting a wrapped
 /// `-2147483548` (BN-B3).
 fn DecimalFormat::check_biased(
   self : DecimalFormat,
   biased : Int64,
 ) -> Unit raise BitnumError {
-  let max = self.biased_exponent_max().to_int64()
+  let max = self.biased_exponent_field_max().to_int64()
   if biased < 0L || biased > max {
     raise ExponentOutOfRange(biased, 0L, max)
   }

@@ -205,11 +205,14 @@ test "decimal wire: oversized coefficient is rejected with digit counts" {
 ///|
 test "decimal wire: exponent outside the biased range is rejected with bounds" {
   let f : DecimalFormat = Decimal32
-  // Emax is 96, so 97 biased to 198 exceeds the legal maximum 197.
+  // The biased gate asks whether the value fits the exponent field, so its bound is
+  // the field capacity `2^(exp_cont+2)-1` = 255, and 155 biases to 256. Exponent 97
+  // is *not* this gate's business any more: 198 does fit the field, so the gate after
+  // it prints `exponent 97 out of range [-101, 90]` — the quantity the caller wrote.
   let v = Decimal::{
     negative: false,
     coefficient: BigInt::from_int(1),
-    exponent: 97,
+    exponent: 155,
     kind: DFinite,
   }
   let r = try {
@@ -219,7 +222,7 @@ test "decimal wire: exponent outside the biased range is rejected with bounds" {
     ExponentOutOfRange(value, min, max) => "\{value} in [\{min}, \{max}]"
     _ => "wrong error variant"
   }
-  inspect(r, content="198 in [0, 197]")
+  inspect(r, content="256 in [0, 255]")
   // And below: exponent -102 biases to -1.
   let v2 = Decimal::{
     negative: false,
@@ -234,7 +237,7 @@ test "decimal wire: exponent outside the biased range is rejected with bounds" {
     ExponentOutOfRange(value, min, max) => "\{value} in [\{min}, \{max}]"
     _ => "wrong error variant"
   }
-  inspect(r2, content="-1 in [0, 197]")
+  inspect(r2, content="-1 in [0, 255]")
   // The maximum exponent depends on the digit count, so the endpoint check has to
   // use a coefficient that actually fills the format. dectest pins this down:
   // `0e+10000` clamps to `0E+90` for decimal32, and the largest finite value is

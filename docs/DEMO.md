@@ -562,17 +562,19 @@ exit=1
 ```
 
 这里的 `96` 是**真指数**（`9.999999E+102` 超过 `Emax=96`），上下界也是真指数，
-所以说 `exponent`。另一条检查守的是**偏置指数域**，措辞不同：
+所以说 `exponent`。另一条检查守的是**偏置值装不装得进字段**，措辞不同：
 
 ```
-$ bitnum bits decimal32 1e97
-bitnum: biased exponent 198 out of range [0, 197]
+$ bitnum bits decimal32 1e155
+bitnum: biased exponent 256 out of range [0, 255]
 exit=1
 ```
 
-两条分支原先共用一句 `biased exponent …`，于是上面第二条把真指数 96 印成
-`biased exponent 96 out of range [-101, 90]` —— 一个不是偏置指数的数配一组真指数
-的界（BN-B5，修复自 2026-11-10 审计）。现在各自说清在检查哪个量。
+`255` 是字段容量（`2^(6+2)-1`）：偏置值 256 连位都放不下。字段放得下的偏置值由
+下一道门按位数收紧 —— `1e97` 偏置 198 装得下，于是印的是
+`exponent 97 out of range [-101, 90]`。两条分支原先共用一句 `biased exponent …`，
+于是把真指数 96 印成 `biased exponent 96 out of range [-101, 90]` —— 一个不是偏置
+指数的数配一组真指数的界（BN-B5，修复自 2026-11-10 审计）。现在各自说清在检查哪个量。
 
 ```
 $ bitnum bits binary16 xyz

@@ -130,28 +130,30 @@ test "decimal wire: an over-capacity coefficient is named as a coefficient" {
   } catch {
     e => e.describe()
   }
-  inspect(slot, content="biased exponent 301 out of range [0, 197]")
+  inspect(slot, content="biased exponent 301 out of range [0, 255]")
 }
 
 ///|
-/// The biased branch keeps its own wording, because it really is talking about
-/// the biased exponent: `97` biases to `198`, one past the legal maximum `197`.
-/// Both spellings must coexist — flattening them to one wording would lose which
-/// quantity the bounds belong to.
+/// The biased branch keeps its own wording, because it really is talking about the
+/// biased exponent: `155` biases to `256`, one past the field capacity `255`. Both
+/// spellings must coexist — flattening them to one wording would lose which
+/// quantity the bounds belong to. (`97` biases to `198`, which *fits* the field, so
+/// it is the unbiased branch's business and prints `exponent 97 out of range
+/// [-101, 90]`; the biased gate is about bits, not about legality.)
 test "decimal wire: the biased rejection still says biased" {
   let f : DecimalFormat = Decimal32
   let above = try {
     let _ = f.encode_raw(Decimal::{
       negative: false,
       coefficient: BigInt::from_int(1),
-      exponent: 97,
+      exponent: 155,
       kind: DFinite,
     })
     "no error"
   } catch {
     e => e.describe()
   }
-  inspect(above, content="biased exponent 198 out of range [0, 197]")
+  inspect(above, content="biased exponent 256 out of range [0, 255]")
   let below = try {
     let _ = f.encode_raw(Decimal::{
       negative: false,
@@ -163,5 +165,5 @@ test "decimal wire: the biased rejection still says biased" {
   } catch {
     e => e.describe()
   }
-  inspect(below, content="biased exponent -1 out of range [0, 197]")
+  inspect(below, content="biased exponent -1 out of range [0, 255]")
 }

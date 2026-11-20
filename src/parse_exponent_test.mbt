@@ -8,7 +8,7 @@
 /// `Int32` and the sum had no overflow check, so the true `-2147483649` wrapped to
 /// a *plausible* `+2147483647`; the encoder then added the bias and wrapped a
 /// second time, reporting
-/// `biased exponent -2147483548 out of range [0, 197]`.
+/// `biased exponent -2147483548 out of range [0, 255]`.
 ///
 /// `1e2147483647` never wrapped in the parse — `2147483647` fits `Int32` — but the
 /// bias sum did, so it printed the same `-2147483548`. That is why the fix has to

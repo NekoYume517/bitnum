@@ -287,8 +287,8 @@ pub fn DecimalFormat::bias(Self) -> Int
 pub fn DecimalFormat::name(Self) -> String
 
 // 指数范围
-pub fn DecimalFormat::biased_exponent_field_max(Self) -> Int   // 2^(exp_cont+2)-1：域容量
-pub fn DecimalFormat::biased_exponent_max(Self) -> Int         // Emax+bias：合法上限
+pub fn DecimalFormat::biased_exponent_field_max(Self) -> Int   // 2^(exp_cont+2)-1：域容量 255/1023/16383
+pub fn DecimalFormat::biased_exponent_max(Self) -> Int         // Emax_top+bias：合法上限 191/767/12287
 pub fn DecimalFormat::emax(Self) -> Int                        // 96 / 384 / 6144
 pub fn DecimalFormat::emin(Self) -> Int                        // -95 / -383 / -6143
 pub fn DecimalFormat::etin_y(Self) -> Int                      // -101 / -398 / -6176
@@ -389,8 +389,11 @@ exponent 0 out of range [-101, -102]          # 修复前：区间为空，且�
 coefficient has 199 decimal digits, this format holds 7   # 修复后
 ```
 
-偏置指数域那道门（`ExponentOutOfRange`）仍在最前面，保持不变：指数连槽位都放不下
-时，那才是第一个该说的事实。
+偏置指数域那道门（`ExponentOutOfRange`）仍在最前面：偏置值连字段都放不下时，那才是
+第一个该说的事实。它的上界是**字段容量** `2^(exp_cont+2)-1`（255/1023/16383），不是
+`Emax+bias` —— 后者是 `Emax` 自己的偏置编码，没有任何有限 datum 能达到（见
+implementation.md §1），拿它当界就是在报一个不存在的合法区间。字段放得下的偏置值
+（如 97 → 198）交给下一道门，由它印出真指数 `exponent 97 out of range [-101, 90]`。
 
 **NaN 布局是二进制直觉的反面**。NaN 时组合字段是 `11111`，其下一位是 **signaling 标志**
 （`0` = quiet），再往下才是诊断 payload。`ddEncode.decTest` 直接钉死：
@@ -516,8 +519,14 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 
 | 变体 | 检查的是什么 | 措辞 |
 |---|---|---|
-| `ExponentOutOfRange` | **偏置**指数域 `[0, Emax+bias]` | `biased exponent 198 out of range [0, 197]` |
+| `ExponentOutOfRange` | **偏置**值能否装进字段 `[0, 2^(exp_cont+2)-1]` = `[0, 255/1023/16383]` | `biased exponent 256 out of range [0, 255]` |
 | `UnbiasedExponentOutOfRange` | **真**指数 `[Etiny, Emax_top]`（按位数收紧） | `exponent 96 out of range [-101, 90]` |
+
+`ExponentOutOfRange` 的上界是**字段容量**，不是 `Emax+bias`（197/782/12320）——
+后者没有任何有限 datum 能达到（要它就得 `exp_top == 3`，那个槽位是 Infinity/NaN），
+把它印成"合法上限"会让 192..197 这一段（字段装得下、却没有任何 datum 能到）看起来合法。字段门只回答"装得下吗"；
+装得下之后由 `max_exponent_for` 那道门按位数收紧，并在越界时印**真指数**。
+（2026-11-21 审计：字段门原先用 `Emax+bias` 当上界，`biased max` 也被叫成"合法上限"。）
 
 共用一句 `biased exponent …` 会让第二道门印出 `biased exponent 96 out of range
 [-101, 90]` —— 一个不是偏置指数的数，配一组真指数的界，读者无法判断到底哪个量越界。

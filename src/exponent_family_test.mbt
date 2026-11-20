@@ -36,7 +36,7 @@ test "decimal wire: the exponent-boundary family holds on decimal64" {
   } catch {
     e => e.describe()
   }
-  inspect(below, content="biased exponent -1 out of range [0, 782]")
+  inspect(below, content="biased exponent -1 out of range [0, 1023]")
   // Etiny itself is the smallest subnormal and encodes.
   inspect(
     f.to_hex(f.encode_raw(parse_decimal("1e-398"))),
@@ -91,7 +91,7 @@ test "decimal wire: the exponent-boundary family holds on decimal128" {
   } catch {
     e => e.describe()
   }
-  inspect(below, content="biased exponent -1 out of range [0, 12320]")
+  inspect(below, content="biased exponent -1 out of range [0, 16383]")
   inspect(
     f.to_hex(f.encode_raw(parse_decimal("1e-6176"))),
     content="00000000000000000000000000000001",
@@ -152,15 +152,17 @@ test "decimal wire: an over-capacity coefficient is named on every width" {
     far64,
     content="coefficient has 800 decimal digits, this format holds 16",
   )
-  // But when the biased slot cannot even represent the exponent, the biased
-  // gate speaks first — the ordering D4 kept in place.
+  // But when the biased value does not fit the exponent field at all, the biased
+  // gate speaks first — the ordering D4 kept in place. `e400` biases to 798, which
+  // is inside the 10-bit field, so that input is the *coefficient* failure above;
+  // the field gate needs an exponent past the capacity (1000 biases to 1398).
   let slot64 = try {
-    let _ = f64.encode_raw(parse_decimal(String::make(800, '1') + "e400"))
+    let _ = f64.encode_raw(parse_decimal(String::make(800, '1') + "e1000"))
     "no error"
   } catch {
     e => e.describe()
   }
-  inspect(slot64, content="biased exponent 798 out of range [0, 782]")
+  inspect(slot64, content="biased exponent 1398 out of range [0, 1023]")
   // decimal128: 34-digit container, one past.
   let f128 : DecimalFormat = Decimal128
   let wide128 = try {
