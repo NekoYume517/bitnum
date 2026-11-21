@@ -13,7 +13,7 @@
 /// 零要单独判：`0.0 == -0.0` 在数值上成立，所以符号位靠 `1.0 / v` 区分。
 
 ///|
-fn bin16_oracle(bits : Int) -> Double raise BitnumError {
+fn bin16_oracle(bits : Int32) -> Double raise BitnumError {
   let sign = (bits >> 15) & 1
   let exp = (bits >> 10) & 0x1F
   let frac = bits & 0x3FF
@@ -46,11 +46,7 @@ test "binary16: to_f64 matches an independent exact oracle on all 63488 non-NaN 
     let got = d.to_f64()
     let want = bin16_oracle(i)
     // 零的符号：0.0 == -0.0，必须靠倒数区分
-    let ok = if want == 0.0 {
-      1.0 / got == 1.0 / want
-    } else {
-      got == want
-    }
+    let ok = if want == 0.0 { 1.0 / got == 1.0 / want } else { got == want }
     if !ok {
       failures = failures + 1
       if first_bad < 0 {
@@ -64,7 +60,7 @@ test "binary16: to_f64 matches an independent exact oracle on all 63488 non-NaN 
 }
 
 ///|
-fn bf16_oracle(bits : Int) -> Double raise BitnumError {
+fn bf16_oracle(bits : Int32) -> Double raise BitnumError {
   let sign = (bits >> 15) & 1
   let exp = (bits >> 7) & 0xFF
   let frac = bits & 0x7F
@@ -94,11 +90,7 @@ test "bfloat16: to_f64 matches an independent exact oracle on all 65280 finite p
     checked = checked + 1
     let got = d.to_f64()
     let want = bf16_oracle(i)
-    let ok = if want == 0.0 {
-      1.0 / got == 1.0 / want
-    } else {
-      got == want
-    }
+    let ok = if want == 0.0 { 1.0 / got == 1.0 / want } else { got == want }
     if !ok {
       failures = failures + 1
       if first_bad < 0 {
