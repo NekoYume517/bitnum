@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 157, passed: 157, failed: 0.
+Total tests: 172, passed: 172, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -614,10 +614,10 @@ exit=0
 
 ```
 $ moon test
-Total tests: 157, passed: 157, failed: 0.
+Total tests: 172, passed: 172, failed: 0.
 ```
 
-157 条测试的覆盖规模（不是"157 个断言"，是 157 条测试里有几条是穷举）：
+172 条测试的覆盖规模（不是"172 个断言"，是 172 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
