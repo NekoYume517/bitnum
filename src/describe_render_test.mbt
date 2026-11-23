@@ -181,8 +181,8 @@ test "describe: negative zero spells -0 and keeps its annotation" {
 ///|
 test "describe: binary16 value lines stay byte-for-byte as documented" {
   // The existing locked outputs (README/DEMO) must not move. The -0 line did
-  // move on 2026-11-17 — deliberately, see the matrix test above: alue now
-  // spells the sign itself, so the expected string is alue=-0   (-0).
+  // move on 2026-11-17 — deliberately, see the matrix test above: value now
+  // spells the sign itself, so the expected string is value=-0   (-0).
   inspect(
     describe_binary16(0x0001),
     content="sign=0  exponent=0 (subnormal)  significand=1\n" +
