@@ -651,7 +651,10 @@ pub fn DecimalFormat::to_hex(self : DecimalFormat, raw : BigInt) -> String {
 /// right-aligning it into `0A2300000000003D` decodes a different number that
 /// happens to look plausible. `decode_bytes` already refuses a short buffer with
 /// `TruncatedInput`; this is the same rejection for the hex spelling of the same
-/// input, so the two entry points cannot disagree (PLAN.md §1.2).
+/// input, so the two entry points cannot disagree (PLAN.md §1.2). `decode_bytes`
+/// counts bytes, this entry counts hex digits; the shared sentence keeps both
+/// numbers and stays unit-neutral (2026-11-23 audit) — the CLI translates the
+/// pair into hex-digit terms at its boundary.
 ///
 /// The check is `!=` rather than `<`: a string wider than the format is the same
 /// class of error — it does not fit the container — and reporting both through

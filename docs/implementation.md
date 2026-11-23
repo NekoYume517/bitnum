@@ -439,6 +439,17 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
 
 ## 16. 2026-11-23：`from_hex` 的最后一处 `unwrap`，与 argv 保真
 
+- **共享宽度拒绝句改为单位中性（2026-11-23 第二批）。** `TruncatedInput` 的句子
+  `need N bytes, got M` 服务两个入口，但它们数的单位不同：`decode_bytes` 数字节、
+  `from_hex` 数十六进制字符（`needed = hex_width()`）。库层对 `from_hex` 的宽度拒绝
+  于是说 `need 16 bytes, got 15` —— 一个 8 字节宽的 decimal64 被说成 16 字节；CLI
+  一直翻译成 `decimal64 is 16 hex digits, got 15`，所以用户从没见过这句谎，缺陷只在
+  库层 `describe()`。修法：`describe()` 改 `needed N, got M`（两个数字不动），字段
+  注释写清单位随入口（一个变体服务两个单位，点名任何一个都在向另一个说谎）；
+  CLI 文案逐字节不变（8 条基线哈希对比证实），无新增变体。
+  `src/from_hex_unit_test.mbt` 红→绿，反向验证红
+  （`BN-2026-11-23-3-{red,green,revert-red}.log`）。
+
 - **孤立代理项让 `from_hex` abort，而不是拒绝。** `get_char(i)` 对没有配对的代理项
   答 `None`，`from_hex` 的遍历 `unwrap()` 它。规范 UTF-16 文本永远不含孤立代理项，
   11-21 的 BMP 扫掠证明的可达集合一直是干净的，所以它被记为「不可达但一处硬」。

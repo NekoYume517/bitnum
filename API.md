@@ -336,7 +336,11 @@ decimal32.decode_raw(2^32)   -> wire pattern needs 33 bits, this format holds 32
 ```
 
 `decode_bytes` / `from_hex` 继续用 `TruncatedInput`：那两个入口真的在数字节和十六进制字符
-（`need 4 bytes, got 5` / `decimal32 is 8 hex digits, got 7`），单位没有第二种读法。
+（`decode_bytes` 的 `needed` 是 `byte_width()`，`from_hex` 的是 `hex_width()`），单位没有
+第二种读法。（2026-11-23：共享的 `describe()` 句改为单位中性的 `needed N, got M` ——
+一个变体服务两个计数单位不同的入口，句子点名任何一个单位都是在向另一个说谎；
+`from_hex` 的旧句 `need 16 bytes, got 15` 把一个 8 字节宽的 decimal64 说成 16 字节。
+单位契约住在各自入口的文档与字段注释里，CLI 在边界翻译成 hex 术语。）
 
 **负数 `raw` 是语义拒绝，不是字节数问题**（2026-11-17 审计）。线格式的位串是非负整数，
 而修复前它借用 `TruncatedInput(width, -1)` 表达，读者看到的是
@@ -383,8 +387,8 @@ A2300000000003D0   (16 位，正确)      -> 正常解析
 和漏一个字节一样，都是「这不是一个 decimal64」。
 
 CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex digits, got 15`。
-库的措辞按字节计（`decode_bytes` 需要字节），CLI 的按 hex 字符计 —— 在边界翻译，
-两边都不说错单位。
+库的共享句单位中性（`needed 16, got 15`；`decode_bytes` 数字节、`from_hex` 数 hex
+字符，各自文档声明单位），CLI 的按 hex 字符计 —— 在边界翻译，两边都不说错单位。
 
 **CLI 的错误回显原样打印输入**，这一点对孤立代理项有一个运行时层面的后果
 （2026-11-23 审计，记为遗留）：`cannot parse '<text>': …` 与 `non-hex character in

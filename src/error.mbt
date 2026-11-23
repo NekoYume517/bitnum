@@ -58,12 +58,21 @@ pub(all) suberror BitnumError {
   /// so `describe()` owns the whole sentence and no fragment has to be a
   /// grammatical part of one.
   UnparsableInput(String, String)
-  /// `needed` bytes required, `got` bytes supplied.
+  /// `needed` units required, `got` units supplied.
   ///
-  /// Always a **byte** count (hex digits only at the CLI boundary, which
-  /// translates it): the two entry points that raise it — `decode_bytes` and
-  /// `from_hex` — are counting exactly that. A bit pattern wider than its format
-  /// is a different quantity and has its own variant, `WirePatternTooWide`.
+  /// The unit is the **entry point's own count**, not one fixed unit: the two
+  /// raisers count different things — `decode_bytes` counts bytes,
+  /// `from_hex` counts hex digits (its `needed` is `hex_width()`, its `got`
+  /// is `text.length()`). One variant serves both, so the sentence stays
+  /// unit-neutral (`needed N, got M`) and each raiser's doc comment owns the
+  /// unit; a sentence that named either unit would lie to the other caller —
+  /// `from_hex`'s old `need 16 bytes, got 15` described decimal64's 8-byte
+  /// container in bytes it never counted (2026-11-23 audit). The CLI
+  /// translates the pair at its boundary (`decimal64 is 16 hex digits, got
+  /// 15`), and `wire_width_message_test.mbt` builds the byte-count sentence
+  /// from the fields for the caller the unit really fits. A bit pattern
+  /// wider than its format is a different quantity with its own variant,
+  /// `WirePatternTooWide`.
   TruncatedInput(Int32, Int32)
   /// A wire pattern wider than the format: `width` bits supplied, `capacity` bits
   /// the format holds.
@@ -104,7 +113,7 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
       "exponent \{value} out of range [\{min}, \{max}]"
     InexactConversion(what) => "cannot represent \{what} exactly"
     UnparsableInput(text, why) => "cannot parse '\{text}': \{why}"
-    TruncatedInput(needed, got) => "need \{needed} bytes, got \{got}"
+    TruncatedInput(needed, got) => "needed \{needed}, got \{got}"
     WirePatternTooWide(width, capacity) =>
       "wire pattern needs \{width} bits, this format holds \{capacity}"
     NanPayloadTooLarge(width, capacity) =>
