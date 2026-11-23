@@ -4,7 +4,11 @@
 ///
 /// Two independent checks raise this error:
 ///
-///   - `check_biased` rejects a *biased* exponent outside `[0, Emax + bias]`
+///   - `check_biased` rejects a *biased* exponent outside the **field capacity**
+///     `[0, 2^(exp_cont+2)-1]` — 255 for decimal32, 1023 for decimal64, 16383 for
+///     decimal128. The *legal* ceiling for a finite datum is the tighter
+///     `Emax_top + bias` (191 / 767 / 12287), enforced by the gate after it;
+///     `Emax + bias` (197 / 782 / 12320) is neither bound — no datum attains it.
 ///   - the `exp_limit` branch rejects a *true* exponent above `Emax_top` /
 ///     `Emax - (digits - 1)`
 ///
