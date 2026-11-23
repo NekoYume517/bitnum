@@ -13,10 +13,11 @@
 /// silently turn the rejection into an abort.
 ///
 /// A string containing an *unpaired* surrogate can only be built with
-/// `Int::unsafe_to_char`, which is the caller's explicit "I know this is not text";
-/// that is the only way to make any of these `unwrap`s see `None`, and nothing in the
-/// CLI can produce it. Recorded rather than guarded: `from_hex` has no `raise` channel
-/// today, but the reachable set is covered.
+/// `Int::unsafe_to_char`; no well-formed text contains one, which is what makes
+/// this sweep the reachable set. Such a unit makes `get_char` answer `None`, and
+/// `from_hex` used to `unwrap()` that — an abort behind a `raise` signature. It
+/// is now rejected like any other non-hex character, and
+/// `hex_surrogate_test.mbt` locks that for every width, slot, and surrogate end.
 test "hex: every BMP scalar in a wire string is a clean rejection, not a panic" {
   let f : DecimalFormat = Decimal32
   let mut valid = 0

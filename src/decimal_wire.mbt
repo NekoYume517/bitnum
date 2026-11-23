@@ -656,6 +656,18 @@ pub fn DecimalFormat::to_hex(self : DecimalFormat, raw : BigInt) -> String {
 /// The check is `!=` rather than `<`: a string wider than the format is the same
 /// class of error — it does not fit the container — and reporting both through
 /// `TruncatedInput(width, got)` keeps one wording for "the size is wrong".
+///
+/// The walk is total (2026-11-23 audit). `get_char(i)` answers `None` for a
+/// code unit that is a *lone* surrogate — one with no pair to decode with — and
+/// the walk used to `unwrap()` that `None`, so such a string aborted the process
+/// behind a signature that says `raise`. No well-formed text contains one (the
+/// BMP sweep in `hex_scalar_sweep_test.mbt` is the reachable set), but a
+/// Windows native `argv` does carry it through to this function, and
+/// `Int::unsafe_to_char` builds one directly — "not reachable from text" is not
+/// "cannot be constructed" for a `pub` function taking a `String`. A missing
+/// character and a non-hex character are the same fact to a hex reader, so both
+/// take the one existing rejection — the same shape as the CLI's `hex_digit`
+/// (2026-11-17).
 pub fn DecimalFormat::from_hex(
   self : DecimalFormat,
   text : String,
@@ -667,7 +679,10 @@ pub fn DecimalFormat::from_hex(
   let upper = text.to_upper()
   let mut acc = BigInt::from_int(0)
   for i in 0..<upper.length() {
-    let c = upper.get_char(i).unwrap()
+    let c = match upper.get_char(i) {
+      Some(c) => c
+      None => raise UnparsableInput(text, "non-hex character")
+    }
     let d = if c >= '0' && c <= '9' {
       c.to_int() - '0'.to_int()
     } else if c >= 'A' && c <= 'F' {

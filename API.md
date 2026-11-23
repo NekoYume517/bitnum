@@ -366,6 +366,16 @@ A2300000000003D0   (16 位，正确)      -> 正常解析
 `decode_bytes` 对短 buffer 早就报 `TruncatedInput`，同一个错误形态在两个入口不一致。
 补零会让上面那个手误变成「有意义」，正是 PLAN.md §1.2 禁止的静默修正。
 
+**`from_hex` 对任何 `String` 都是全函数**（2026-11-23 审计）。`get_char(i)` 对**孤立
+代理项**（没有配对的半个代理对）答 `None`，而遍历原先 `unwrap()` 它：一个只能用
+`Int::unsafe_to_char` 构造的 8 位串让进程在 `raise` 签名后面 abort（wasm 是
+`Option::unwrap[Char]` trap，native CLI 以 `-1073740791` 退出）。规范 UTF-16 文本永远
+不含孤立代理项，所以 11-21 的 BMP 扫掠证明的可达集合一直是干净的 —— 但「文本不可达」
+不等于「构造不出来」，`from_hex` 是 `pub` 且收 `String`。现在缺字符与非 hex 字符是
+同一个拒绝 `UnparsableInput(text, "non-hex character")`，与 CLI 的 `hex_digit`
+（2026-11-17）同形，不新增变体；`src/hex_surrogate_test.mbt` 把三个宽度 × 每个位置 ×
+四个孤立代理项端点全部锁成「拒绝」。
+
 **`decode_bytes` 现在同样要求精确宽度**（BN-B13，2026-11-11 审计）：修复前它只判
 `got < needed`，9 字节的 buffer 会被当成 decimal64 —— 前 8 字节解出一个值，尾部
 垃圾无声丢弃。这与 `from_hex` 对超长串的处理正好相反，而两个入口处理的本来就是
@@ -375,6 +385,14 @@ A2300000000003D0   (16 位，正确)      -> 正常解析
 CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex digits, got 15`。
 库的措辞按字节计（`decode_bytes` 需要字节），CLI 的按 hex 字符计 —— 在边界翻译，
 两边都不说错单位。
+
+**CLI 的错误回显原样打印输入**，这一点对孤立代理项有一个运行时层面的后果
+（2026-11-23 审计，记为遗留）：`cannot parse '<text>': …` 与 `non-hex character in
+'<text>'` 都把 `text` 原样交给 `eprintln`，而含孤立代理项的串编码不成 UTF-8 ——
+wasm 测试后端在 `moonbit.fprintln` 处 `unreachable`，native release 则整行不输出
+（退出码仍是 1，分类没错，只是那句话丢了）。这是运行时对非标量码元的拒绝，不是本包
+逻辑；`moon run` 对这类 argv 自己就拒绝（`invalid UTF-8 was detected in one or more
+arguments`，exit 2），直接起的原生 exe 则确实携带它。
 
 **两个指数上限同时生效，取小者** —— 这是全项目最容易搞错的一处：
 

@@ -436,3 +436,23 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
 差别属于两种已声明的豁免（24 个冗余 DPD 码 / Infinity 族丢掉的填充位），且
 `encode_raw` 从不拒绝 `decode_raw` 刚吐出的 datum。上一轮报告里这一节写的是
 「1200 个随机 decimal32 模式」—— 抽样而已。
+
+## 16. 2026-11-23：`from_hex` 的最后一处 `unwrap`，与 argv 保真
+
+- **孤立代理项让 `from_hex` abort，而不是拒绝。** `get_char(i)` 对没有配对的代理项
+  答 `None`，`from_hex` 的遍历 `unwrap()` 它。规范 UTF-16 文本永远不含孤立代理项，
+  11-21 的 BMP 扫掠证明的可达集合一直是干净的，所以它被记为「不可达但一处硬」。
+  本轮把它闭合：`match` 代替 `unwrap`，缺字符与非 hex 字符是同一件事，走既有的
+  `UnparsableInput(text, "non-hex character")` —— 与 CLI 的 `hex_digit`（11-17）同形，
+  不加变体。红灯：wasm 下 `Option::unwrap[Char] ← DecimalFormat::from_hex`；native
+  release 的 CLI 对 `value decimal32 <U+D800 + 7×'0'>` 以 `-1073740791` abort。
+- **顺带关闭 11-21 的「argv 保真未验证」。** Windows 原生 exe 的 argv **确实**携带孤立
+  代理项：PowerShell 用 `[char]0xD800` 拼出参数直接传给 `bitnum.exe`，修复前
+  PanicError，修复后 exit 1。`moon run`（wasm）则由 moon 自己拒绝
+  （`invalid UTF-8 was detected in one or more arguments`，exit 2），程序根本不启动。
+  所以「CLI 一定不会携带孤立代理项」这句话在原生 exe 上不成立，在 `moon run` 上成立。
+- **残余（未修）**：CLI 的错误回显把孤立代理项原样交给运行时打印层 —— wasm 测试
+  后端在 `moonbit.fprintln` 处 `unreachable`，native release 整行不输出（exit 仍为 1）。
+  这是运行时对非标量码元的 UTF-8 编码拒绝，与本包的分类无关；11-17 的
+  `non-hex character in '<text>'` 回显是同一个形状。要修得在 CLI 回显处转义非标量
+  码元，那是回显策略的裁定，本轮只授权改库层，所以只取证。
