@@ -390,13 +390,16 @@ CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex d
 库的共享句单位中性（`needed 16, got 15`；`decode_bytes` 数字节、`from_hex` 数 hex
 字符，各自文档声明单位），CLI 的按 hex 字符计 —— 在边界翻译，两边都不说错单位。
 
-**CLI 的错误回显原样打印输入**，这一点对孤立代理项有一个运行时层面的后果
-（2026-11-23 审计，记为遗留）：`cannot parse '<text>': …` 与 `non-hex character in
-'<text>'` 都把 `text` 原样交给 `eprintln`，而含孤立代理项的串编码不成 UTF-8 ——
-wasm 测试后端在 `moonbit.fprintln` 处 `unreachable`，native release 则整行不输出
-（退出码仍是 1，分类没错，只是那句话丢了）。这是运行时对非标量码元的拒绝，不是本包
-逻辑；`moon run` 对这类 argv 自己就拒绝（`invalid UTF-8 was detected in one or more
-arguments`，exit 2），直接起的原生 exe 则确实携带它。
+**错误回显是可打印文本**（2026-11-24 审计，关闭 11-23 记为遗留的那条）：`cannot parse
+'<text>': …`、`non-hex character in '<text>'`、`not a number: '<text>'`、`unknown format
+'<name>'` 与三条 binary16/bfloat16 的 `note:` 都把调用方文本原样交给运行时打印层，而含
+孤立代理项的串编码不成 UTF-8 —— wasm 测试后端在 `moonbit.fprintln` 处 `unreachable`，
+native 整行不输出（退出码仍对，只是那句话丢了）。现在这些回显统一走 §8 的
+`printable_text`：非标量码元渲染成 U+FFFD，错误**字段**仍逐字节保留原文本（定位那个
+码元要靠它），合法的 astral 字符（emoji、CJK 扩展汉字）照原样通过 —— 它*是*一个字符。
+ASCII 输入上的措辞逐字节不变（全部文档示例重放一致）。`src/error_echo_test.mbt` 锁
+「消息里没有一个码元解不出字符」，`cmd/bitnum/parse_surrogate_wbtest.mbt` 锁 CLI 退出码
+落在 `0/1/2`。
 
 **两个指数上限同时生效，取小者** —— 这是全项目最容易搞错的一处：
 
@@ -528,7 +531,14 @@ pub(all) suberror BitnumError {
 } derive(Debug)
 
 pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 不会漂移
+pub fn printable_text(String) -> String        // 非标量码元 → U+FFFD（回显用，2026-11-24）
 ```
+
+`printable_text` 是 `describe()` 与 CLI 共用的**唯一**一处回显修复（2026-11-24 审计）：
+一个 `String` 可以装不构成字符的码元（孤立代理项），而消息最终要被运行时编码成 UTF-8。
+它逐码元走，解不出字符的位置写 U+FFFD，能解出的位置照写（BMP 之上的标量占两个码元，
+走两格，不把低位那格当空洞）。错误自己的 `UnparsableInput` 字段不动 —— 想定位那个
+码元的调用方需要原文；只有渲染被修好。这样任何后端打印任何消息都不会 trap。
 
 每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
 `DpdDigitGroupMisaligned` 与 `DpdCodeOutOfRange` 都是对 PLAN.md §5 的追加，与 copybook 的

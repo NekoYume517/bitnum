@@ -97,6 +97,44 @@ pub(all) suberror BitnumError {
 }
 
 ///|
+/// `text` with every code unit that is not a character replaced by U+FFFD.
+///
+/// A message is text for a human, and the runtime encodes it when it is
+/// printed. A `String` can hold code units that are not characters — a lone
+/// surrogate, whether injected with `unsafe_to_char` or carried in through a
+/// native `argv` — and such a sequence has no UTF-8 form: the wasm backend
+/// traps at `fprintln`, the native one drops the line, both behind a `raise`
+/// signature that promised the caller a catchable error. `from_hex` and
+/// `parse_decimal` were made total over those code units on 2026-11-23 and
+/// 2026-11-24; this is the third one, the sentence they raise.
+///
+/// The error's **field** keeps the caller's text verbatim — that is how a caller
+/// locates the offending unit — and only the rendering is repaired. U+FFFD is
+/// the standard's own answer for "a unit that has no character", and a
+/// well-formed astral character (an emoji, a CJK extension ideograph) passes
+/// through unchanged: it *is* a character, and calling it broken would be a lie.
+pub fn printable_text(text : String) -> String {
+  let sb = StringBuilder()
+  let n = text.length()
+  let mut i = 0
+  while i < n {
+    match text.get_char(i) {
+      Some(c) => {
+        sb.write_char(c)
+        // A scalar above the BMP occupies two code units; the walk must step
+        // over the low half, which decodes to nothing on its own.
+        i = i + (if c.to_int() > 0xFFFF { 2 } else { 1 })
+      }
+      None => {
+        sb.write_char('\u{FFFD}')
+        i = i + 1
+      }
+    }
+  }
+  sb.to_string()
+}
+
+///|
 /// Human-readable description, used by the CLI and by tests that want to assert
 /// on the *content* of a rejection rather than merely that it happened.
 pub fn BitnumError::describe(self : BitnumError) -> String {
@@ -112,7 +150,8 @@ pub fn BitnumError::describe(self : BitnumError) -> String {
     UnbiasedExponentOutOfRange(value, min, max) =>
       "exponent \{value} out of range [\{min}, \{max}]"
     InexactConversion(what) => "cannot represent \{what} exactly"
-    UnparsableInput(text, why) => "cannot parse '\{text}': \{why}"
+    UnparsableInput(text, why) =>
+      "cannot parse '\{printable_text(text)}': \{why}"
     TruncatedInput(needed, got) => "needed \{needed}, got \{got}"
     WirePatternTooWide(width, capacity) =>
       "wire pattern needs \{width} bits, this format holds \{capacity}"

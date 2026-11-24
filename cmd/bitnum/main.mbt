@@ -68,7 +68,7 @@ fn dispatch(args : Array[String]) -> Int32 raise {
     // request for the usage text. Printing help and exiting 0 on `bitnum help x`
     // made this the one branch that silently accepted a malformed command line.
     if args.length() != 2 {
-      eprintln("bitnum: '\{cmd}' takes no arguments\n")
+      eprintln("bitnum: '\{@lib.printable_text(cmd)}' takes no arguments\n")
       eprintln(usage_text())
       return EXIT_USAGE
     }
@@ -111,7 +111,7 @@ fn check_format(name : String) -> FormatName? {
     "decimal128" => Some(DecimalFmt(@lib.Decimal128))
     _ => {
       eprintln(
-        "bitnum: unknown format '\{name}' (expected binary16, bfloat16, decimal32, decimal64, decimal128)",
+        "bitnum: unknown format '\{@lib.printable_text(name)}' (expected binary16, bfloat16, decimal32, decimal64, decimal128)",
       )
       None
     }
@@ -137,7 +137,7 @@ fn parse_hex_bytes(text : String) -> Bytes? {
     match (hi, lo) {
       (Some(h), Some(l)) => out[i] = ((h << 4) | l).to_byte()
       _ => {
-        eprintln("bitnum: non-hex character in '\{text}'")
+        eprintln("bitnum: non-hex character in '\{@lib.printable_text(text)}'")
         return None
       }
     }
@@ -370,7 +370,7 @@ fn bits_note(
   text : String,
 ) -> String {
   if overflow {
-    "'\{text}' is too large for binary64; rounded to infinity (inexact)"
+    "'\{@lib.printable_text(text)}' is too large for binary64; rounded to infinity (inexact)"
   } else if conv.inexact {
     "rounded (inexact)"
   } else {
@@ -389,7 +389,7 @@ fn bits_note(
 /// Worded in the same family as the overflow note so a caller matching on
 /// "too large/small for binary64" sees one pattern.
 fn binary64_underflow_note(text : String) -> String {
-  "'\{text}' is too small for binary64; rounded to zero (inexact)"
+  "'\{@lib.printable_text(text)}' is too small for binary64; rounded to zero (inexact)"
 }
 
 ///|
@@ -431,7 +431,8 @@ fn underflow_note(text : String) -> String {
 /// Convert a literal to binary16 wire bytes.
 fn binary16_bits(text : String) -> BitsOutcome {
   match read_double_literal(text) {
-    LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
+    LiteralSyntaxError =>
+      BitsRejected("bitnum: not a number: '\{@lib.printable_text(text)}'")
     // The literal travels with the value on both non-overflow paths: the underflow
     // note needs the text to tell a nonzero literal that parsed to zero from a
     // literal that *is* zero (BN-B10).
@@ -469,7 +470,8 @@ fn binary16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
 /// which is what `binary32_overflow` does (BN-B4).
 fn bfloat16_bits(text : String) -> BitsOutcome {
   match read_double_literal(text) {
-    LiteralSyntaxError => BitsRejected("bitnum: not a number: '\{text}'")
+    LiteralSyntaxError =>
+      BitsRejected("bitnum: not a number: '\{@lib.printable_text(text)}'")
     // `text` is passed through even on the non-overflow path because the binary32
     // note names the literal, and which of the two overflows fired is not known
     // until the value is inspected. `bits_note` ignores it when nothing overflowed.
@@ -542,7 +544,7 @@ fn bfloat16_convert(x : Double, overflow : Bool, text : String) -> BitsOutcome {
 /// actually crossed — `binary32`, not `binary64`, because the binary64 value was
 /// fine.
 fn binary32_overflow_note(text : String) -> String {
-  "'\{text}' is too large for binary32; rounded to infinity (inexact)"
+  "'\{@lib.printable_text(text)}' is too large for binary32; rounded to infinity (inexact)"
 }
 
 ///|
@@ -555,7 +557,7 @@ fn binary32_overflow_note(text : String) -> String {
 /// conversion of `0`, and `of_f32`'s `inexact` flag is silent here because the zero
 /// it received really was exact.
 fn binary32_underflow_note(text : String) -> String {
-  "'\{text}' is too small for binary32; rounded to zero (inexact)"
+  "'\{@lib.printable_text(text)}' is too small for binary32; rounded to zero (inexact)"
 }
 
 ///|

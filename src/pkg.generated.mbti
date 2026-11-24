@@ -85,6 +85,8 @@ pub fn popcount64(UInt64) -> Int32
 
 pub fn pow2_exact(Int32) -> Double raise BitnumError
 
+pub fn printable_text(String) -> String
+
 pub fn quiet_nan_double() -> Double
 
 pub fn truncate_round_differ(Float) -> Bool

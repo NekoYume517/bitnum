@@ -462,8 +462,31 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
   PanicError，修复后 exit 1。`moon run`（wasm）则由 moon 自己拒绝
   （`invalid UTF-8 was detected in one or more arguments`，exit 2），程序根本不启动。
   所以「CLI 一定不会携带孤立代理项」这句话在原生 exe 上不成立，在 `moon run` 上成立。
-- **残余（未修）**：CLI 的错误回显把孤立代理项原样交给运行时打印层 —— wasm 测试
-  后端在 `moonbit.fprintln` 处 `unreachable`，native release 整行不输出（exit 仍为 1）。
-  这是运行时对非标量码元的 UTF-8 编码拒绝，与本包的分类无关；11-17 的
-  `non-hex character in '<text>'` 回显是同一个形状。要修得在 CLI 回显处转义非标量
-  码元，那是回显策略的裁定，本轮只授权改库层，所以只取证。
+- **残余已修（2026-11-24）**：CLI 的错误回显把孤立代理项原样交给运行时打印层 —— wasm
+  测试后端在 `moonbit.fprintln` 处 `unreachable`，native release 整行不输出（exit 仍为 1）。
+  这是运行时对非标量码元的 UTF-8 编码拒绝。当时判定「要修得在回显处转义非标量码元」，
+  本轮就这么修了，但只修在**一处**：库层 `printable_text`（`describe()` 与 CLI 回显共用），
+  见 §17。
+---
+
+## 17. 2026-11-24：错误回显 —— 消息必须是可打印文本（P2）
+
+- **现象。** 任何把调用方文本拼进消息的回显都可能在打印层炸掉。原生 exe 上
+  `bitnum bits binary16 <U+D800>` 退出码 1（分类是对的），但 `not a number: '<text>'`
+  那一行**整个消失**；wasm 测试后端同一条路径在 `moonbit.fprintln` 处 `unreachable`，
+  于是 CLI 的这类契约在测试里根本断言不了（一旦断言就 trap）。
+- **根因。** 一个 `String` 可以装不构成字符的码元（孤立代理项），而运行时在打印时
+  要把它编码成 UTF-8，孤儿代理项没有 UTF-8 形式。11-23 把 `from_hex` 的**取字符**做成
+  全函数，却没有管**渲染**：拒绝句里引用的仍是原文。
+- **修法。** 新增 `printable_text`（`src/error.mbt`）作为唯一一处回显修复：逐码元走，
+  解不出字符的位置写 U+FFFD，能解出的照写（BMP 之上的标量占两个码元，走两格）。
+  `BitnumError::describe()` 的 `UnparsableInput` 分支与 CLI 的九处回显（`cmd` / `name` /
+  hex 文本 / 三条 binary16 note / 三条 bfloat16 note / 两条 `not a number`）全部改走它。
+  错误**字段**不动，ASCII 输入的措辞逐字节不变（文档示例全量重放 32 条带退出码的
+  一致，另有 24 条纯输出块一致）。
+- **验证。** `src/error_echo_test.mbt` 红→绿（红：消息里 `get_char` 在孤立代理项处答
+  `None`，`holes = 1`）；`cmd/bitnum/parse_surrogate_wbtest.mbt` 在同一轮里从
+  `RuntimeError: unreachable` 转成 exit 1。反向验证：把 `printable_text` 的 `None` 分支
+  改回直接写 `c`（`Some`）后再跑，红回来。
+- **为什么一处而不是十处。** 历史教训是同一个决定写两份就会漂移；回显策略尤其如此，
+  它同时被库测试与 CLI 观察。
