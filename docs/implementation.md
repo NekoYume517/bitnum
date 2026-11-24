@@ -490,3 +490,30 @@ python scripts/float_ref.py       # numpy 19988/19988, torch 4973/4973, 全部�
   改回直接写 `c`（`Some`）后再跑，红回来。
 - **为什么一处而不是十处。** 历史教训是同一个决定写两份就会漂移；回显策略尤其如此，
   它同时被库测试与 CLI 观察。
+
+---
+
+## 18. 2026-11-24：`parse_decimal` 的镜像缺口（P1）
+
+- **现象。** `bitnum bits decimal32 <孤立代理项 U+D800>` 直接 `PanicError`，退出码
+  `-1073740791`（`0xC0000409`），完全掉出文档承诺的 `0/1/2`。同一个字符串交给
+  `value` / `check` 是干净的 exit 1 —— 因为那两个入口走 `from_hex`，11-23 已经修过。
+- **根因。** `parse_decimal` 按码元下标遍历，五处 `get_char(i).unwrap()`；
+  `get_char` 对孤立代理项答 `None`。11-23 的修复只到 `from_hex` 为止，注释里把
+  「安全论证」写在「遍历先遇到高半」上 —— 那个论证对 `parse_decimal` 不成立：它的
+  槽位里数字、`.`、`e` 都是合法字符，孤立代理项可以在任何位置。
+- **修法。** 五处 `unwrap` 换成 `match`／`Some(...)` 比较：缺字符与「不是这几个 ASCII
+  字符」是同一个答案，于是引导位落 `no digits`、numeral 之后落
+  `junk after the number`、指数里落 `junk after the exponent` —— 复用既有句子，
+  不加变体，也不新造「孤立代理项」这类只对非标量有意义的名词。
+- **验证。** `src/parse_decimal_surrogate_test.mbt` 红→绿：
+  - 红：wasm 下 `Option::unwrap[Char] ← parse_decimal`，测试以 Error 失败
+    （`@NekoYume517/bitnum/src.parse_decimal` 在栈上）。
+  - 绿：四个孤立代理项端点 × 8 个槽位 × 3 个格式全拒绝；BMP 扫掠两个位置
+    （53 776 + 1 + 2 + 63 475 与 12 + 1 + 63 475 逐一核对）。
+  - 反向验证：把首字符那一处改回 `unwrap()`，第一组用例立刻以 panic 红回来。
+- **CLI 边界同锁。** `cmd/bitnum/parse_surrogate_wbtest.mbt` 断言 `cmd_bits` 对
+  `decimal32/64/128` 的 8 种槽位形状一律返回 1（不是 -1、不是 trap），并保留
+  `binary16` 作为对照（那条路走 `parse_double`，本来就拒非 ASCII 文本）。
+  这个用例在 §17 的回显修复之前是 `RuntimeError: unreachable`，两个修复各是各的：
+  消息可打印 ≠ 解析全函数。

@@ -242,6 +242,17 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
 一个比文法更宽容的解析器会让调用方错误和解码器缺陷无法区分。
 
+**`parse_decimal` 对任何 `String` 都是全函数**（2026-11-24 审计）：`get_char(i)` 对
+**孤立代理项**答 `None`，而遍历原先在五个位置 `unwrap()` 它，于是
+`bitnum bits decimal32 <U+D800>` 在 `raise` 签名后面 abort（native `-1073740791`，
+wasm 是 `Option::unwrap[Char]` trap）。这是 §6 里 `from_hex` 那次修复的**镜像缺口**：
+那次只修了一个入口，而 `bits` 走的是 `parse_decimal`，根本不经过 `from_hex`。
+现在「缺字符」与「任何非数字字符」是同一件事 —— 引导位落 `no digits`，numeral 之后落
+`junk after the number`，指数里落 `junk after the exponent`，不新增变体。
+`src/parse_decimal_surrogate_test.mbt` 锁两件事：四个孤立代理项端点 × 每个槽位都是
+拒绝；BMP 每个标量在首槽与次槽的归属（数字 / 符号 / 小数点 / 指数标记 / 垃圾）逐一
+对得上 —— 任何回到 `unwrap()` 的写法都过不了这两道扫掠。
+
 `numerically_equal` 比较数值而非三元组同一性：忽略尾随零填充（`1.0` 与 `1.00`
 数值相等）；非零值的符号不同则不等，±0 按数值相等。标准把 `1.0` 和 `1.00`
 当作不同三元组，本包也在 `Decimal` 中原样保留符号、系数和指数，所以派生的 `Eq`

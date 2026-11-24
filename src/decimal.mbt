@@ -235,11 +235,17 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   }
   let mut i = 0
   let mut negative = false
-  let first = s.get_char(0).unwrap()
-  if first == '-' {
+  // `get_char` answers `None` for a code unit that is not a character — a lone
+  // surrogate. Every read below asks "is this one of a few ASCII characters?",
+  // so a missing character and a non-matching character are the same answer and
+  // the walk stays total (2026-11-24 audit: `parse_decimal` kept the abort that
+  // `from_hex` had already lost on 2026-11-23, because that fix stopped at one
+  // entry point; `bitnum bits decimal32 <lone U+D800>` exited `-1073740791`).
+  let first = s.get_char(0)
+  if first == Some('-') {
     negative = true
     i = 1
-  } else if first == '+' {
+  } else if first == Some('+') {
     i = 1
   }
   if i >= n {
@@ -249,19 +255,22 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   let mut seen_point = false
   let mut frac_digits = 0
   while i < n {
-    let c = s.get_char(i).unwrap()
-    if c == '.' {
-      if seen_point {
-        raise UnparsableInput(s, "more than one decimal point")
+    match s.get_char(i) {
+      Some('.') => {
+        if seen_point {
+          raise UnparsableInput(s, "more than one decimal point")
+        }
+        seen_point = true
       }
-      seen_point = true
-    } else if c >= '0' && c <= '9' {
-      dsb.write_char(c)
-      if seen_point {
-        frac_digits = frac_digits + 1
+      Some(c) if c >= '0' && c <= '9' => {
+        dsb.write_char(c)
+        if seen_point {
+          frac_digits = frac_digits + 1
+        }
       }
-    } else {
-      break
+      // A lone surrogate lands here: not a digit, not a point, so the numeral
+      // ends exactly where it would for any other junk character.
+      _ => break
     }
     i = i + 1
   }
@@ -277,8 +286,8 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
   // it either fits or it is reported by value.
   let mut exponent64 = Int64::from_int(-frac_digits)
   if i < n {
-    let c = s.get_char(i).unwrap()
-    if c != 'e' && c != 'E' {
+    let c = s.get_char(i)
+    if c != Some('e') && c != Some('E') {
       raise UnparsableInput(s, "junk after the number")
     }
     i = i + 1
@@ -287,11 +296,11 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     }
     let mut exp_negative = false
     if i < n {
-      let sc = s.get_char(i).unwrap()
-      if sc == '-' {
+      let sc = s.get_char(i)
+      if sc == Some('-') {
         exp_negative = true
         i = i + 1
-      } else if sc == '+' {
+      } else if sc == Some('+') {
         i = i + 1
       }
     }
@@ -300,12 +309,12 @@ pub fn parse_decimal(text : StringView) -> Decimal raise BitnumError {
     }
     let esb = StringBuilder()
     while i < n {
-      let dc = s.get_char(i).unwrap()
-      if dc >= '0' && dc <= '9' {
-        esb.write_char(dc)
-        i = i + 1
-      } else {
-        raise UnparsableInput(s, "junk after the exponent")
+      match s.get_char(i) {
+        Some(dc) if dc >= '0' && dc <= '9' => {
+          esb.write_char(dc)
+          i = i + 1
+        }
+        _ => raise UnparsableInput(s, "junk after the exponent")
       }
     }
     let etext = esb.to_string()
