@@ -13,9 +13,7 @@
 /// 同时钉住**行为**不变：非零 payload 仍打印 raw 续域整数，带宽度版本才出 DPD
 /// 数字；两个入口的分工由本测试与 `nan_payload_token_test.mbt` 一起锁死。
 test "to_scientific_string keeps its non-raising public signature" {
-  let mbti = @fs.read_file_to_string("src/pkg.generated.mbti") catch {
-    _ => ""
-  }
+  let mbti = @fs.read_file_to_string("src/pkg.generated.mbti") catch { _ => "" }
   let mut bad = 0
   let log : Array[String] = []
   // 既有入口：必须恰好是 `-> String`，且这一行不得出现 `raise`。
