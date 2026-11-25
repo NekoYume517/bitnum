@@ -157,47 +157,86 @@ pub fn Decimal::adjusted_exponent(self : Decimal) -> Int64 {
 /// boundary). Getting the boundary wrong is invisible until a full `dectest`
 /// transcript is diffed, so `examples/vectors-decimal.tsv` carries the expected
 /// text for all 568 vectors and this renderer is tested against that column.
-pub fn Decimal::to_scientific_string(self : Decimal) -> String {
+///
+/// A NaN payload is the one form whose digits depend on the *format*: it lives in
+/// the coefficient continuation field, 20 bits wide in decimal32, 50 in decimal64
+/// and 110 in decimal128, and §3.5.2 reads that whole fixed-width field as DPD
+/// digit groups. So this entry point takes the width, and
+/// `to_scientific_string` — for callers that only hold a `Decimal` — prints a
+/// non-zero payload as the raw continuation integer instead.
+pub fn Decimal::to_scientific_string_of_width(
+  self : Decimal,
+  coef_cont_bits : Int32,
+) -> String raise BitnumError {
+  match self.kind {
+    DInfinity => if self.negative { "-Infinity" } else { "Infinity" }
+    DNan => {
+      let sign = if self.negative { "-" } else { "" }
+      sign + "NaN" + nan_payload_digits(self.coefficient, coef_cont_bits)
+    }
+    DSignalingNan => {
+      let sign = if self.negative { "-" } else { "" }
+      sign + "sNaN" + nan_payload_digits(self.coefficient, coef_cont_bits)
+    }
+    DFinite => self.render_finite()
+  }
+}
+
+///|
+/// The standard's *to-scientific-string* for a datum whose format is not at hand.
+///
+/// The finite, zero and Infinity forms are width-independent, and so are NaN /
+/// sNaN with a zero payload. A *non-zero* payload needs the format's field width
+/// to be read as digits, which this entry point does not have; it prints the
+/// payload as the raw continuation integer instead. `describe_decimal` — the only
+/// caller that has a wire pattern — uses `to_scientific_string_of_width`.
+pub fn Decimal::to_scientific_string(
+  self : Decimal,
+) -> String raise BitnumError {
   match self.kind {
     DInfinity => if self.negative { "-Infinity" } else { "Infinity" }
     DNan => if self.negative { "-NaN" } else { "NaN" }
     DSignalingNan => if self.negative { "-sNaN" } else { "sNaN" }
-    DFinite => {
-      let sign = if self.negative { "-" } else { "" }
-      if self.coefficient.is_zero() {
-        render_zero(sign, self.exponent)
+    DFinite => self.render_finite()
+  }
+}
+
+///|
+/// The finite branch of *to-scientific-string*, shared by both entry points.
+fn Decimal::render_finite(self : Decimal) -> String {
+  let sign = if self.negative { "-" } else { "" }
+  if self.coefficient.is_zero() {
+    render_zero(sign, self.exponent)
+  } else {
+    let digits = self.coefficient.to_string(radix=10)
+    let n = digits.length()
+    let exp = self.exponent
+    let adjusted = self.adjusted_exponent()
+    if exp <= 0 && adjusted >= -6L {
+      if exp == 0 {
+        sign + digits
       } else {
-        let digits = self.coefficient.to_string(radix=10)
-        let n = digits.length()
-        let exp = self.exponent
-        let adjusted = self.adjusted_exponent()
-        if exp <= 0 && adjusted >= -6L {
-          if exp == 0 {
-            sign + digits
-          } else {
-            let e = -exp
-            if e >= n {
-              // Fewer significant digits than the scale: pad with zeros.
-              sign + "0." + String::make(e - n, '0') + digits
-            } else {
-              let cut = n - e
-              sign + digits[0:cut].to_owned() + "." + digits[cut:].to_owned()
-            }
-          }
+        let e = -exp
+        if e >= n {
+          // Fewer significant digits than the scale: pad with zeros.
+          sign + "0." + String::make(e - n, '0') + digits
         } else {
-          let mantissa = if n == 1 {
-            digits
-          } else {
-            digits[0:1].to_owned() + "." + digits[1:].to_owned()
-          }
-          let exp_text = if adjusted >= 0 {
-            "E+" + adjusted.to_string()
-          } else {
-            "E" + adjusted.to_string()
-          }
-          sign + mantissa + exp_text
+          let cut = n - e
+          sign + digits[0:cut].to_owned() + "." + digits[cut:].to_owned()
         }
       }
+    } else {
+      let mantissa = if n == 1 {
+        digits
+      } else {
+        digits[0:1].to_owned() + "." + digits[1:].to_owned()
+      }
+      let exp_text = if adjusted >= 0 {
+        "E+" + adjusted.to_string()
+      } else {
+        "E" + adjusted.to_string()
+      }
+      sign + mantissa + exp_text
     }
   }
 }
@@ -219,8 +258,64 @@ fn render_zero(sign : String, exponent : Int32) -> String {
 }
 
 ///|
-/// Parse the standard's *to-number* form into an exact triple.
+/// The NaN payload suffix of the standard's *to-scientific-string*, as digits.
 ///
+/// IEEE 754-2008 §3.5.2 puts a NaN's payload in the fields below the combination
+/// field, and §5.12.1 writes a NaN as `NaN` followed by those digits: a zero
+/// payload has no suffix at all, so `7C00000000000000` prints `NaN` while
+/// `7C00000000000001` prints `NaN1`.
+///
+/// **The payload is stored one way and rendered another.** The decoder keeps it as
+/// the raw integer of the coefficient continuation field, because that is what
+/// `encode_raw` has to add back verbatim — a value round-trips bit-for-bit through
+/// that number. But the standard reads those bits as **DPD-encoded decimal
+/// digits**, so `0x49C5` is the payload `12345`, not `18885`. Official
+/// `dectest` fixes both directions: `ddEncode.decTest` `decd545` maps `NaN12345`
+/// to `#7c000000000049c5`, and `decd518` prints `#7fffffffffffffff` back as
+/// `sNaN999999999999999`.
+///
+/// So the renderer has to translate: walk the continuation field in 10-bit DPD
+/// groups, decode each to three digits, and drop leading zeros (the field is
+/// fixed-width but the digits are not). A payload too wide to be a digit triple
+/// group — which `encode_raw` already refuses to write, so it cannot arrive from
+/// the wire — renders as `?` rather than silently as a different number.
+fn nan_payload_digits(
+  payload : BigInt,
+  coef_cont_bits : Int32,
+) -> String raise BitnumError {
+  if payload.is_zero() {
+    return ""
+  }
+  // The field is fixed-width per format (decimal32 20, decimal64 50, decimal128
+  // 110 bits) and each 10-bit group is one DPD triple. The field is *not*
+  // necessarily a multiple of 10, so pad on the left before grouping rather than
+  // starting at the first set bit — `110` and `50` both divide by 10 only when
+  // padded, and reading `0xFFFFF` as two groups loses a digit.
+  let groups = (coef_cont_bits + 9) / 10
+  let sb = StringBuilder()
+  for gi in 0..<groups {
+    let shift = (groups - 1 - gi) * 10
+    let group = big_slice(payload, shift, 10).to_int()
+    let (d1, d2, d3) = dpd_decode3(group)
+    sb.write_string(d1.to_string())
+    sb.write_string(d2.to_string())
+    sb.write_string(d3.to_string())
+  }
+  // Fixed-width field, variable-width digits: `NaN1`, not `NaN000…001`.
+  let raw = sb.to_string()
+  let mut start = 0
+  while start < raw.length() && raw.get_char(start) == Some('0') {
+    start = start + 1
+  }
+  if start >= raw.length() {
+    ""
+  } else {
+    raw.substring(start~)
+  }
+}
+
+///|
+/// Parse the standard's *to-number* form into an exact triple.
 /// Accepts an optional sign, digits with an optional single decimal point, and an
 /// optional `E`-exponent with an optional sign. Deliberately does **not** accept
 /// `NaN` or `Infinity` (those are not numbers; the wire layer builds them from

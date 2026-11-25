@@ -179,7 +179,9 @@ pub fn describe_decimal(
       sb.write_string("  payload=\{v.coefficient}\n")
     }
   }
-  sb.write_string("kind=\{v.kind.label()}  value=\{v.to_scientific_string()}")
+  sb.write_string(
+    "kind=\{v.kind.label()}  value=\{v.to_scientific_string_of_width(fmt.coef_cont_bits())}",
+  )
   if d.redundant_groups > 0 {
     sb.write_string(
       "   (\{d.redundant_groups} non-canonical DPD group(s); the encoder cannot produce these)",
