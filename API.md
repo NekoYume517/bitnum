@@ -215,6 +215,7 @@ pub fn Decimal::is_negative(Self) -> Bool     // 符号位，不是"小于零"
 pub fn Decimal::digit_count(Self) -> Int
 pub fn Decimal::adjusted_exponent(Self) -> Int64     // 需要 33 位，见下
 pub fn Decimal::to_scientific_string(Self) -> String
+pub fn Decimal::to_scientific_string_of_width(Self, Int) -> String raise BitnumError
 
 pub fn parse_decimal(StringView) -> Decimal raise BitnumError
 pub fn numerically_equal(Decimal, Decimal) -> Bool
@@ -237,6 +238,21 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 `adjusted >= -6` 用普通记数法，否则科学记数法。边界正好在 `-6`：
 `-0.00000750`（adjusted -6）是普通形式，`-7.50E-7`（adjusted -7）是科学形式。
 568 条向量的 `original_text` 列逐字符锁定这一点。
+
+它**不带 `raise`**，以后也不该带：函数体全能量，唯一会报错的
+`nan_payload_digits` 只被下面那个带宽度版本经过。这是既有公开 API，加上 `raise`
+只会逼每个调用方包 `try`；`src/api_signature_test.mbt` 直接对
+`pkg.generated.mbti` 断言这一行的签名，不靠代码文本。
+
+`to_scientific_string_of_width` 是同一个渲染器，额外吃格式的系数续域宽度
+（decimal32 20 位 / decimal64 50 / decimal128 110）。**只有 NaN 需要它**：
+IEEE 754-2008 §3.5.2 把 payload 放在那个定宽续域里，§5.12.1 要求写成
+`NaN<数字>`，而那串数字是把整个定宽字段按 10 位一组解 DPD 得到的。
+所以 `#7C000000000049C5` 是 `NaN12345`（不是 `NaN`，也不是 `payload=18885`
+那个续域整数）。`Decimal` 内部把 payload 存成续域**整数**——`encode_raw` 要原样
+写回，位级往返靠的就是它——两种拼写因此分工：`describe_decimal` 的
+`payload=` 行给位模式，`value=` 行走带宽度版本给标准数字串。不带宽度的旧入口
+在非零 payload 时仍打 raw 整数（它没有宽度可猜），零 payload 两边一致。
 
 `parse_decimal` **故意不接受** `NaN` / `Infinity`（那不是数字，由 wire 层从字段构造，
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。

@@ -190,9 +190,14 @@ pub fn Decimal::to_scientific_string_of_width(
 /// to be read as digits, which this entry point does not have; it prints the
 /// payload as the raw continuation integer instead. `describe_decimal` — the only
 /// caller that has a wire pattern — uses `to_scientific_string_of_width`.
-pub fn Decimal::to_scientific_string(
-  self : Decimal,
-) -> String raise BitnumError {
+///
+/// This signature deliberately stays `-> String`, without `raise`: it is the
+/// long-standing public entry point, and nothing in this body can fail.
+/// `render_finite` is total, and `nan_payload_digits` — the only function here
+/// that raises — is reached solely by the width-aware variant. A `raise` would
+/// tax every downstream caller with a `try` for no behaviour gained, so
+/// `api_signature_test.mbt` pins the signature in `pkg.generated.mbti`.
+pub fn Decimal::to_scientific_string(self : Decimal) -> String {
   match self.kind {
     DInfinity => if self.negative { "-Infinity" } else { "Infinity" }
     DNan => if self.negative { "-NaN" } else { "NaN" }

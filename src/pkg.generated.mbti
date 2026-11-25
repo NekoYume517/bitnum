@@ -157,7 +157,7 @@ pub fn Decimal::is_negative(Self) -> Bool
 pub fn Decimal::is_zero(Self) -> Bool
 pub fn Decimal::make(Bool, @bigint.BigInt, Int32) -> Self raise BitnumError
 pub fn Decimal::nan(Bool, @bigint.BigInt) -> Self
-pub fn Decimal::to_scientific_string(Self) -> String raise BitnumError
+pub fn Decimal::to_scientific_string(Self) -> String
 pub fn Decimal::to_scientific_string_of_width(Self, Int32) -> String raise BitnumError
 pub fn Decimal::zero(Bool, Int32) -> Self
 
