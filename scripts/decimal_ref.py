@@ -124,14 +124,15 @@ class Fmt:
         """Largest exponent usable by a full-precision coefficient."""
         return self.emax - (self.coef_digits - 1)
 
-    @property
-    def etiny(self):
-        """Smallest biased-legal exponent: the exponent field's own floor.
 
-        This is `1 - bias`, i.e. exp_enc == 0.  It is NOT derived from Emax;
-        confusing the two is a classic slip.
-        """
-        return 1 - self.bias
+# `etiny` used to live here as `1 - bias`, i.e. the exponent field's own floor.
+# That is wrong: IEEE 754-2008 §3.5.2 defines Etiny = Emin - (p - 1), which is
+# -101 for decimal32, -398 for decimal64 and -6176 for decimal128. The property
+# was also never called from anywhere in this script, so its wrong value sat
+# there unexercised — exactly the shape that gets picked up by the next person
+# who needs "the smallest exponent" and does not re-derive it. The MoonBit side
+# is right (`DecimalFormat::etin_y`); the floor is asserted there by
+# `decimal_exponent_slot_test.mbt` and appears in every `table` transcript.
 
 
 DEC32 = Fmt("decimal32", 32, 6, 7, 101, 96)
