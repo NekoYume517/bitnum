@@ -51,22 +51,6 @@ fn bin16_overflow_midpoint() -> Double {
 }
 
 ///|
-/// Which side of the seam a magnitude is on, without asking the implementation.
-fn bin16_overflows_under_nearest(x : Double) -> Bool {
-  // Round-to-nearest first: |x - 65504| > |x - 65536| means the nearest finite
-  // neighbour is 2^16 itself, which binary16 cannot hold.
-  let dmax = x - bin16_max_finite()
-  let dnext = 65536.0 - x
-  if dmax == dnext {
-    // Exact tie: the neighbour with the even significand wins, and that is 2^16
-    // (significand 0 at exponent 31 -> field 0 after the carry, still even).
-    true
-  } else {
-    dnext < dmax
-  }
-}
-
-///|
 test "binary16: of_f64 keeps the directed mode across the whole overflow band" {
   let modes : Array[RoundingMode] = [
     NearestEven,
