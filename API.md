@@ -417,16 +417,23 @@ CLI 层把 `TruncatedInput` 翻译成十六进制术语：`decimal64 is 16 hex d
 库的共享句单位中性（`needed 16, got 15`；`decode_bytes` 数字节、`from_hex` 数 hex
 字符，各自文档声明单位），CLI 的按 hex 字符计 —— 在边界翻译，两边都不说错单位。
 
-**错误回显是可打印文本**（2026-11-24 审计，关闭 11-23 记为遗留的那条）：`cannot parse
+**错误回显是可打印文本**（2026-11-24 审计，关闭 11-23 记为遗留的那条；2026-11-27
+收紧到「一行」）：`cannot parse
 '<text>': …`、`non-hex character in '<text>'`、`not a number: '<text>'`、`unknown format
 '<name>'` 与三条 binary16/bfloat16 的 `note:` 都把调用方文本原样交给运行时打印层，而含
 孤立代理项的串编码不成 UTF-8 —— wasm 测试后端在 `moonbit.fprintln` 处 `unreachable`，
 native 整行不输出（退出码仍对，只是那句话丢了）。现在这些回显统一走 §8 的
-`printable_text`：非标量码元渲染成 U+FFFD，错误**字段**仍逐字节保留原文本（定位那个
-码元要靠它），合法的 astral 字符（emoji、CJK 扩展汉字）照原样通过 —— 它*是*一个字符。
-ASCII 输入上的措辞逐字节不变（全部文档示例重放一致）。`src/error_echo_test.mbt` 锁
-「消息里没有一个码元解不出字符」，`cmd/bitnum/parse_surrogate_wbtest.mbt` 锁 CLI 退出码
-落在 `0/1/2`。
+`printable_text`：**任何不打印的码元都写成 `\u{XXXX}`**（`Cc` / `Cf` / `Zl` / `Zp`、
+变体选择符、标签字符、`U+FFFD` 本身，以及解不出字符的孤立代理项 —— 后者以前折成
+U+FFFD，现在具名，读者能看到是哪个码元被拒），错误**字段**仍逐字节保留原文本（定位
+那个码元要靠它），合法的可打印字符（emoji、CJK 扩展汉字、空格）照原样通过 —— 它*是*
+一个字符。理由是拒绝语是行导向输出：`U+000D U+000A` 曾把 `bitnum: cannot parse '1`
+和 `2': junk after the number` 分成两行，调用方数据于是能伪造一行 `bitnum:` 判定；
+`U+001B` 则在终端里真的被执行。ASCII 输入（含 CR/LF 之外的空白）上的措辞逐字节不变
+（全部 48 条文档示例重放一致）。`src/printable_text_test.mbt` 与
+`src/error_line_test.mbt` 锁转义面与「一句话一行」，
+`src/error_echo_test.mbt` 锁「消息里没有一个码元解不出字符」，
+`cmd/bitnum/parse_surrogate_wbtest.mbt` 锁 CLI 退出码落在 `0/1/2`。
 
 **两个指数上限同时生效，取小者** —— 这是全项目最容易搞错的一处：
 
@@ -558,14 +565,23 @@ pub(all) suberror BitnumError {
 } derive(Debug)
 
 pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 不会漂移
-pub fn printable_text(String) -> String        // 非标量码元 → U+FFFD（回显用，2026-11-24）
+pub fn printable_text(String) -> String        // 不打印的码元 → \u{XXXX}（回显用）
 ```
 
-`printable_text` 是 `describe()` 与 CLI 共用的**唯一**一处回显修复（2026-11-24 审计）：
-一个 `String` 可以装不构成字符的码元（孤立代理项），而消息最终要被运行时编码成 UTF-8。
-它逐码元走，解不出字符的位置写 U+FFFD，能解出的位置照写（BMP 之上的标量占两个码元，
-走两格，不把低位那格当空洞）。错误自己的 `UnparsableInput` 字段不动 —— 想定位那个
-码元的调用方需要原文；只有渲染被修好。这样任何后端打印任何消息都不会 trap。
+**`check` 的 `value` 行用格式自己的宽度**（2026-11-27，BN-19-2）：`check` 报告里那行
+人读的 `value` 走 `to_scientific_string_of_width(f.nan_payload_bits())`，不是无宽度的
+`to_scientific_string`。`check` 手里有 `f`，无宽度那个入口按契约只能印裸 `NaN`，
+于是「说明往返了什么」的那一行曾经是唯一不说明 payload 的一行 —— 与 BN-18-1 同族，
+只是落在另一条渲染路径上（`cmd/bitnum/check_nan_value_wbtest.mbt`）。
+
+`printable_text` 是 `describe()` 与 CLI 共用的**唯一**一处回显修复（2026-11-24 审计，
+2026-11-27 收紧）：一个 `String` 可以装不构成字符的码元（孤立代理项），而消息最终要被
+运行时编码成 UTF-8；它也可以装**是**字符却不让读者看见的字符（CR/LF、ESC、双向覆盖）。
+它逐码元走，两种情况都写成 `\u{XXXX}`：解不出字符的位置写它自己的码元（`\u{D800}`，
+不再折成 U+FFFD —— 具名才能定位），`Cc`/`Cf`/`Zl`/`Zp` 与 `U+FFFD` 也是如此；其余照写
+（BMP 之上的标量占两个码元，走两格，不把低位那格当空洞）。错误自己的
+`UnparsableInput` 字段不动 —— 想定位那个码元的调用方需要原文；只有渲染被修好。
+这样任何后端打印任何消息都不会 trap，而且这句拒绝语**恒为一行**。
 
 每条都携带**足够定位的信息**（哪个码、哪个范围、需要多少字节），不是一句话。
 `DpdDigitGroupMisaligned` 与 `DpdCodeOutOfRange` 都是对 PLAN.md §5 的追加，与 copybook 的
