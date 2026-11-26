@@ -961,8 +961,20 @@ fn classify_decimal_check(
 /// This is the same defect BN-18-1 fixed in `describe_decimal`, left standing on
 /// the other rendering path. Both now go through the width-aware renderer, so the
 /// two lines for one pattern read the same.
+///
+/// **The width argument is the coefficient continuation field**, same as
+/// `describe_decimal` (round 21, 2026-11-28→29). This function passed
+/// `nan_payload_bits()` — 25 / 57 / 119, i.e. `exp_cont + coef_cont - 1` — which is
+/// how many bits of the pattern are payload but **not** how many bits the renderer
+/// may read as digit groups. The renderer groups its width into 10-bit DPD triples,
+/// so 25 gives it three groups for decimal32 and the third comes from the five bits
+/// above the field. `bitnum check decimal32 7DFFFFFF` then printed
+/// `value NaN891999999` while `bitnum value decimal32 7DFFFFFF` printed
+/// `value=NaN999999` for the same pattern — two out of the four paths disagreeing.
+/// `dsEncode.decTest` line `decs518` settles it: `#7fffffff` is `sNaN999999`,
+/// six digits, because the payload lives in the 20-bit field (§3.5.2).
 fn decimal_value_text(f : @lib.DecimalFormat, value : @lib.Decimal) -> String {
-  value.to_scientific_string_of_width(f.nan_payload_bits()) catch {
+  value.to_scientific_string_of_width(f.coef_cont_bits()) catch {
     e => e.describe()
   }
 }
