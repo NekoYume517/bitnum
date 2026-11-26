@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 183, passed: 183, failed: 0.
+Total tests: 195, passed: 195, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -621,10 +621,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 183, passed: 183, failed: 0.
+Total tests: 195, passed: 195, failed: 0.
 ```
 
-183 条测试的覆盖规模（不是"183 个断言"，是 183 条测试里有几条是穷举）：
+195 条测试的覆盖规模（不是"195 个断言"，是 195 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -642,6 +642,8 @@ Total tests: 183, passed: 183, failed: 0.
 | `parse_decimal` 词法全空间 | 孤立代理项 4 个端点 × 8 个槽位 × 3 个格式；BMP 每个标量（63 488 个）在首槽与次槽的归属 |
 | 错误回显 | 4 个孤立代理项端点的消息「无解不出字符的码元」+ astral 字符原样 + 字段保真 |
 | `table` 报告 | **5** 个格式的报告逐字节对齐 DEMO / README 引用的围栏块 |
+| `docs/DEMO.md` 的全部 `bitnum` 块 | **48** 条命令逐行回放，含退出码与 stdout/stderr 分配（`cmd/bitnum/demo_replay_wbtest.mbt`） |
+| 拒绝语的行形态 | CRLF / C0 / C1 / 格式字符 / 孤立代理项共 9 个码元在 `printable_text` 下的转义，加 3 条端到端 `describe` 断行 |
 | 渲染口径矩阵 | **5** 格式 × 6 个 datum 的 `value` token（`0` / `-0` / `±Infinity` / `NaN` / `-NaN`） |
 | 最大有限值之上的中点 | 2 格式 × 5 模式 × 双符号（B4 补的那一格） |
 | 舍入模式 | 5 种 × 向量表 |
