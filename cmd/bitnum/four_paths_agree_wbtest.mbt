@@ -256,19 +256,6 @@ fn hex_prefix_len(line : String) -> Int32 {
 }
 
 ///|
-/// Index of the first space in `s`, or -1.
-fn find_space(s : String) -> Int32 {
-  let mut i = 0
-  for ch in s.to_array() {
-    if ch == ' ' {
-      return i
-    }
-    i = i + 1
-  }
-  -1
-}
-
-///|
 /// Drop trailing blanks. `String` has no `trim_right` here (`cmd` only imports
 /// `trim_start`), and the table pads its value cell to 26 columns, so the parser has
 /// to strip the padding itself.
