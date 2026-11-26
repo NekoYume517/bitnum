@@ -294,6 +294,20 @@ pub fn DecimalFormat::nan_payload_bits(Self) -> Int32    // deprecated，函数�
 迁移：把 `f.nan_payload_bits()` 改成 `f.payload_bit_count()`；**不要**把这个值当作
 `to_scientific_string_of_width` 的参数（那是 `f.coef_cont_bits()`）。
 
+**一句可以背下来的口径**（2026-11-29 裁决后补写）：
+
+| 量 | 函数 | decimal32 / 64 / 128 | 用途 |
+|---|---|---|---|
+| 渲染宽度 | `coef_cont_bits()` | **20 / 50 / 110** | `to_scientific_string_of_width` 的**唯一**合法参数 |
+| payload 位数 | `payload_bit_count()` | **25 / 57 / 121** | 只回答「信号位以下有多少位是 payload」，**不能**传进渲染器 |
+
+两者在 decimal32 上差 **20 vs 25** —— 那 5 位正是本轮 P1 的差：传错了就多切出一组
+（`ceil(25/10) = 3` 而非 2），`7DFFFFFF` 于是印成 `NaN891999999`。判据不是「哪个名字
+更顺眼」，而是 §3.5.2：payload 的**数字**在系数续域里，字段宽度是 20/50/110；
+`exp_cont - 1` 那几位承载 payload 但不承载数字。这条区别在 decimal64 / decimal128 上
+不显形（50、110 都是 10 的倍数），**只在 decimal32 上直接暴露**，所以最容易被
+「在别的格式上试过没问题」骗过去。
+
 `parse_decimal` **故意不接受** `NaN` / `Infinity`（那不是数字，由 wire 层从字段构造，
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
 一个比文法更宽容的解析器会让调用方错误和解码器缺陷无法区分。
