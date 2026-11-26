@@ -254,9 +254,9 @@ IEEE 754-2008 §3.5.2 把 payload 放在那个定宽续域里，§5.12.1 要求�
 `payload=` 行给位模式，`value=` 行走带宽度版本给标准数字串。不带宽度的旧入口
 在非零 payload 时仍打 raw 整数（它没有宽度可猜），零 payload 两边一致。
 
-**宽度参数只能是系数续域宽度，不是 `nan_payload_bits`**（2026-11-29 审计）。
+**宽度参数只能是系数续域宽度，不是 `payload_bit_count`**（2026-11-29 审计）。
 
-`nan_payload_bits = (exp_cont - 1) + coef_cont` 是「信号位以下有多少位是 payload」，
+`payload_bit_count = (exp_cont - 1) + coef_cont` 是「信号位以下有多少位是 payload」，
 是真实的量，但**不是渲染宽度**：渲染器把它的宽度按 10 位一组切成 DPD 三元组，而
 `exp_cont - 1` 那些位落在字段上方，不属于任何一组。
 
@@ -275,6 +275,24 @@ value NaN891999999        # 多了三位，来自字段上方的 5 位
 空余位被置位时把后缀拉长一组。现在四个出口统一走 `coef_cont_bits()`：
 `src/signal_bit_boundary_test.mbt` 锁边界扫掠，
 `cmd/bitnum/four_paths_agree_wbtest.mbt` 锁出口一致性。
+
+**改名与弃用别名**（2026-11-29）。这个量的旧名是 `nan_payload_bits`，读起来像「渲染 payload
+要用的宽度」，正是本轮缺陷的成因。新名 `payload_bit_count` 说的是它真正回答的问题：
+「有多少位是 payload」。
+
+```moonbit
+pub fn DecimalFormat::payload_bit_count(Self) -> Int32   // 25 / 57 / 121
+pub fn DecimalFormat::nan_payload_bits(Self) -> Int32    // deprecated，函数体就是转发
+```
+
+旧名保留为**转发别名**，外部调用方不必改代码：它的函数体只有一句
+`self.payload_bit_count()`，`src/payload_bit_count_test.mbt` 用两条测试守住——
+一是两个名字在三个格式上返回同一值，二是**别名函数体必须只有一条语句且必须是那次
+转发**（按源码文本断言，因为「今天相同」挡不住明天有人把公式复制一份）。
+两个名字都仍在 `pkg.generated.mbti` 里，`api_signature_test.mbt` 钉住签名行。
+
+迁移：把 `f.nan_payload_bits()` 改成 `f.payload_bit_count()`；**不要**把这个值当作
+`to_scientific_string_of_width` 的参数（那是 `f.coef_cont_bits()`）。
 
 `parse_decimal` **故意不接受** `NaN` / `Infinity`（那不是数字，由 wire 层从字段构造，
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
@@ -352,7 +370,8 @@ pub fn DecimalFormat::emin(Self) -> Int                        // -95 / -383 / -
 pub fn DecimalFormat::etin_y(Self) -> Int                      // -101 / -398 / -6176
 pub fn DecimalFormat::emax_top(Self) -> Int                    // 90 / 369 / 6111
 pub fn DecimalFormat::max_exponent_for(Self, BigInt) -> Int
-pub fn DecimalFormat::nan_payload_bits(Self) -> Int
+pub fn DecimalFormat::payload_bit_count(Self) -> Int   // 2026-11-29 改名，见下
+pub fn DecimalFormat::nan_payload_bits(Self) -> Int     // deprecated：转发到上一行
 pub fn DecimalFormat::geometry_is_consistent(Self) -> Bool      // 自检，测试调用
 
 // 编解码
@@ -596,7 +615,7 @@ pub fn printable_text(String) -> String        // 不打印的码元 → \u{XXXX
 `NaN`，于是「说明往返了什么」的那一行曾经是唯一不说明 payload 的一行 —— 与 BN-18-1
 同族，只是落在另一条渲染路径上（`cmd/bitnum/check_nan_value_wbtest.mbt`）。
 
-宽度必须是**系数续域**宽度，不是 `nan_payload_bits`：后者多出的 `exp_cont - 1` 位会
+宽度必须是**系数续域**宽度，不是 `payload_bit_count`：后者多出的 `exp_cont - 1` 位会
 凑出第三组，`7DFFFFFF` 于是印成 `NaN891999999`（见 §5.12.1 那段）。
 
 `printable_text` 是 `describe()` 与 CLI 共用的**唯一**一处回显修复（2026-11-24 审计，

@@ -163,10 +163,34 @@ pub fn DecimalFormat::etin_y(self : DecimalFormat) -> Int32 {
 }
 
 ///|
-/// Width of the diagnostic payload a NaN can carry, in bits: everything below the
-/// signaling flag.
-pub fn DecimalFormat::nan_payload_bits(self : DecimalFormat) -> Int32 {
+/// How many bits of a NaN pattern are payload, in total: everything below the
+/// signaling flag, i.e. the exponent-continuation bits that follow it plus the
+/// coefficient-continuation field.
+///
+/// **Read the name as "payload bit count", not "payload width".** Those are different
+/// quantities and confusing them was a real defect (round 21, 2026-11-29): the
+/// renderer takes a *digit-group* width and slices it into 10-bit DPD triples, so it
+/// must be given `coef_cont_bits()` — the coefficient field. This function answers
+/// "how many bits are payload", which is `(exp_cont - 1) + coef_cont`; the
+/// `exp_cont - 1` part carries payload but forms no digit group, so handing this value
+/// to the renderer reads bits above the field as a third group and prints digits that
+/// were never encoded (`7DFFFFFF` -> `NaN891999999` instead of `NaN999999`).
+///
+/// The old name `nan_payload_bits` remains as a deprecated alias so external callers
+/// keep compiling; it forwards here, so the two can never disagree.
+pub fn DecimalFormat::payload_bit_count(self : DecimalFormat) -> Int32 {
   self.exp_cont_bits() + self.coef_cont_bits() - 1
+}
+
+///|
+/// **Deprecated** (2026-11-29): use `payload_bit_count()`. Same value, same forwarding
+/// body — kept only so the published name does not vanish from `pkg.generated.mbti`.
+///
+/// The name read like "the width to render a payload with", which is the coefficient
+/// continuation field (`coef_cont_bits()`), not this number. `src/api_signature_test.mbt`
+/// pins both names in `.mbti`, and `payload_bit_count_test.mbt` pins that they agree.
+pub fn DecimalFormat::nan_payload_bits(self : DecimalFormat) -> Int32 {
+  self.payload_bit_count()
 }
 
 ///|
@@ -504,7 +528,7 @@ fn DecimalFormat::check_datum(
   }
   if is_nan {
     // The genuine width case keeps its variant and its numbers.
-    let cap = self.nan_payload_bits()
+    let cap = self.payload_bit_count()
     if value.coefficient.compare(BigInt::from_int(1) << cap) >= 0 {
       raise NanPayloadTooLarge(value.coefficient.bit_length(), cap)
     }

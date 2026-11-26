@@ -189,6 +189,7 @@ pub fn DecimalFormat::hex_width(Self) -> Int32
 pub fn DecimalFormat::max_exponent_for(Self, @bigint.BigInt) -> Int32
 pub fn DecimalFormat::name(Self) -> String
 pub fn DecimalFormat::nan_payload_bits(Self) -> Int32
+pub fn DecimalFormat::payload_bit_count(Self) -> Int32
 pub fn DecimalFormat::to_hex(Self, @bigint.BigInt) -> String
 
 #derive(Eq, @debug.Debug)
