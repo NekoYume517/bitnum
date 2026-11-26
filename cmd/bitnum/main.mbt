@@ -875,7 +875,7 @@ fn cmd_check(format_name : String, hex : String) -> Int32 raise {
         println(
           "out   (no canonical bytes: \{decoded.redundant_groups} non-canonical DPD group(s))",
         )
-        println("value \{decoded.value.to_scientific_string()}")
+        println("value \{decimal_value_text(f, decoded.value)}")
         println(
           "result: non-canonical input accepted — the encoder never emits redundant DPD codes, so this pattern has no canonical form (PLAN.md §4.4)",
         )
@@ -893,7 +893,7 @@ fn cmd_check(format_name : String, hex : String) -> Int32 raise {
         CheckInfinityPadding => {
           println("in    \{f.to_hex(raw)}")
           println("out   \{f.to_hex(back)}")
-          println("value \{decoded.value.to_scientific_string()}")
+          println("value \{decimal_value_text(f, decoded.value)}")
           println(
             "result: infinity family — the bits below the combination field carry no value for Infinity, so the encoder writes only the canonical `11110` plus a zeroed exponent continuation; the value round-trips, those padding bits do not (PLAN.md §1.1, API.md §6)",
           )
@@ -943,6 +943,27 @@ fn classify_decimal_check(
     CheckInfinityPadding
   } else {
     CheckMismatch
+  }
+}
+
+///|
+/// The `value` line a decimal `check` report prints: the datum in the standard's
+/// *to-scientific-string*, at the format's own coefficient-continuation width.
+///
+/// `check` emitted this through `to_scientific_string` — the width-less entry
+/// point, whose contract (API.md, `Decimal::to_scientific_string`) is that a NaN
+/// payload comes out as the raw continuation integer because no width is at hand.
+/// `check` *does* have the width: `f` is right there. So for every NaN whose
+/// payload is non-zero the report printed `value NaN` next to `in`/`out` lines
+/// that had just round-tripped that payload byte for byte — the payload vanished
+/// on the one line whose whole job is to say what round-tripped.
+///
+/// This is the same defect BN-18-1 fixed in `describe_decimal`, left standing on
+/// the other rendering path. Both now go through the width-aware renderer, so the
+/// two lines for one pattern read the same.
+fn decimal_value_text(f : @lib.DecimalFormat, value : @lib.Decimal) -> String {
+  value.to_scientific_string_of_width(f.nan_payload_bits()) catch {
+    e => e.describe()
   }
 }
 
