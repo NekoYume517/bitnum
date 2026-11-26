@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 202, passed: 202, failed: 0.
+Total tests: 213, passed: 213, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -621,10 +621,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 202, passed: 202, failed: 0.
+Total tests: 213, passed: 213, failed: 0.
 ```
 
-202 条测试的覆盖规模（不是"202 个断言"，是 202 条测试里有几条是穷举）：
+213 条测试的覆盖规模（不是"213 个断言"，是 213 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -634,6 +634,8 @@ Total tests: 202, passed: 202, failed: 0.
 | 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
 | binary16 溢出带 | 阈值两侧 12 个量级 × 5 模式 × 双符号（含 65505 / 65520 / 1e18） |
 | NaN payload 渲染 | 组独立性穷举 0..1023、组回读一致、宽度无关、dectest 五个锚点 |
+| signal 位 × 越界 payload × 位宽 | 6 档 payload × 静与信 × 20/50/110 |
+| 四出口一致性 | value / check / table / 库渲染器交叉表 |
 | bfloat16 同上 | 全部 **65536** |
 | DPD 三元组往返 | 全部 **1000** |
 | DPD 码空间 | 全部 **1024**（含 24 冗余） |

@@ -256,6 +256,8 @@ pub(all) struct FloatConversion {
 | 二进制中点穷举 | binary16 0x7BFF + bfloat16 0x7F7F 个间隔 × 5 模式 × 双符号 |
 | binary16 溢出带 | 阈值两侧 12 个量级 × 5 模式 × 双符号 = 120 格，含 65505/65520/1e18（2026-11-28） |
 | NaN payload 渲染 | 组独立性穷举 0..1023 × 2，组回读一致，宽度无关（20/50/110 位），dectest 五个锚点（2026-11-28） |
+| signal 位 × 越界 payload × 位宽 | 空 / 1 位 / 整组 / 跨组 / 全组 / 全组+空余位 × 静与信 × 20/50/110（2026-11-29） |
+| 四出口一致性 | alue / check / 	able / 库渲染器，decimal 15 模式 + binary16/bfloat16 各 17 位模式（2026-11-29） |
 | 十进制权威向量（**有限值**） | **568**（496 精确 + 72 冗余）；Infinity / NaN / sNaN **没有向量行**，见下 |
 | 组合字段 × 指数续域全空间 | **565248** 个模式的 decode→encode（3 宽度 × 32 组合 × 全部指数续域 × 4 种系数续域） |
 | 位窗与 Unicode 边界 | 空窗 / 有效宽度截断 / 零被移数的 INT32_MAX 宽度；BMP 大写展开、astral 与混合 ASCII |
@@ -264,7 +266,7 @@ pub(all) struct FloatConversion {
 
 ```
 $ moon test
-Total tests: 202, passed: 202, failed: 0.
+Total tests: 213, passed: 213, failed: 0.
 ```
 
 ## 证据

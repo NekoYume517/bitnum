@@ -254,6 +254,28 @@ IEEE 754-2008 §3.5.2 把 payload 放在那个定宽续域里，§5.12.1 要求�
 `payload=` 行给位模式，`value=` 行走带宽度版本给标准数字串。不带宽度的旧入口
 在非零 payload 时仍打 raw 整数（它没有宽度可猜），零 payload 两边一致。
 
+**宽度参数只能是系数续域宽度，不是 `nan_payload_bits`**（2026-11-29 审计）。
+
+`nan_payload_bits = (exp_cont - 1) + coef_cont` 是「信号位以下有多少位是 payload」，
+是真实的量，但**不是渲染宽度**：渲染器把它的宽度按 10 位一组切成 DPD 三元组，而
+`exp_cont - 1` 那些位落在字段上方，不属于任何一组。
+
+CLI 的 `check` 曾传这个量，于是同一模式两个出口给出不同后缀：
+
+```
+$ bitnum value decimal32 7DFFFFFF
+kind=nan  value=NaN999999
+$ bitnum check decimal32 7DFFFFFF
+value NaN891999999        # 多了三位，来自字段上方的 5 位
+```
+
+判据是 `dsEncode.decTest` 的 `decs518 apply #7fffffff -> sNaN999999`：该模式 25 位
+全 1（含字段上方 5 位），期望后缀仍只有**六个数字**，即两组。decimal64 / decimal128
+的 `coef_cont` 是 10 的倍数，问题在它们身上不显形，但同一个传参错误会在字段上方
+空余位被置位时把后缀拉长一组。现在四个出口统一走 `coef_cont_bits()`：
+`src/signal_bit_boundary_test.mbt` 锁边界扫掠，
+`cmd/bitnum/four_paths_agree_wbtest.mbt` 锁出口一致性。
+
 `parse_decimal` **故意不接受** `NaN` / `Infinity`（那不是数字，由 wire 层从字段构造，
 或由 `Decimal::infinity` / `Decimal::nan` 构造），也不接受十六进制、下划线、空白。
 一个比文法更宽容的解析器会让调用方错误和解码器缺陷无法区分。
@@ -568,11 +590,14 @@ pub fn BitnumError::describe(Self) -> String   // CLI 用的措辞，库和 CLI 
 pub fn printable_text(String) -> String        // 不打印的码元 → \u{XXXX}（回显用）
 ```
 
-**`check` 的 `value` 行用格式自己的宽度**（2026-11-27，BN-19-2）：`check` 报告里那行
-人读的 `value` 走 `to_scientific_string_of_width(f.nan_payload_bits())`，不是无宽度的
-`to_scientific_string`。`check` 手里有 `f`，无宽度那个入口按契约只能印裸 `NaN`，
-于是「说明往返了什么」的那一行曾经是唯一不说明 payload 的一行 —— 与 BN-18-1 同族，
-只是落在另一条渲染路径上（`cmd/bitnum/check_nan_value_wbtest.mbt`）。
+**`check` 的 `value` 行用格式自己的宽度**（2026-11-27，BN-19-2；2026-11-29 修正宽度）：
+`check` 报告里那行人读的 `value` 走 `to_scientific_string_of_width(f.coef_cont_bits())`，
+不是无宽度的 `to_scientific_string`。`check` 手里有 `f`，无宽度那个入口按契约只能印裸
+`NaN`，于是「说明往返了什么」的那一行曾经是唯一不说明 payload 的一行 —— 与 BN-18-1
+同族，只是落在另一条渲染路径上（`cmd/bitnum/check_nan_value_wbtest.mbt`）。
+
+宽度必须是**系数续域**宽度，不是 `nan_payload_bits`：后者多出的 `exp_cont - 1` 位会
+凑出第三组，`7DFFFFFF` 于是印成 `NaN891999999`（见 §5.12.1 那段）。
 
 `printable_text` 是 `describe()` 与 CLI 共用的**唯一**一处回显修复（2026-11-24 审计，
 2026-11-27 收紧）：一个 `String` 可以装不构成字符的码元（孤立代理项），而消息最终要被
