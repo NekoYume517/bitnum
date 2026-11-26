@@ -80,7 +80,8 @@ wrote examples\vectors-binary16.tsv (990 rows)
 
 ## 2. `bitnum value` — 字段分解
 
-PLAN.md §7 给的两条示例输出，逐字符吻合：
+PLAN.md §7 给的两条示例输出，逐字符吻合（第二条在这里；`sNaN` 那条的 payload
+拼写在下面）：
 
 ```
 $ bitnum value binary16 0001
@@ -117,8 +118,15 @@ kind=nan  value=NaN
 ```
 $ bitnum value decimal32 7F7FFFFF
 sign=0  payload=25165823
-kind=signaling-nan  value=sNaN
+kind=signaling-nan  value=sNaN999999
 ```
+
+`payload` 是续域那 20 位（`25165823`），`value` 里的是同一组位按 DPD 三数字分组
+读出来的结果（`999999`）—— 两者是同一个量的两种拼写。这一行曾经印成裸
+`value=sNaN`：渲染走的是**无宽度**入口，而 payload 的十进制拼写需要格式的字段宽度
+（BN-18-1 修的就是这处，`2d14142`）；当时本文这段没跟着重跑，反而留下了「两条示例
+逐字符吻合」的旧断言。现在 `cmd/bitnum/demo_replay_wbtest.mbt` 把本文全部 48 条
+`$ bitnum …` 块逐行对拍，这一行再漂移会直接红。
 
 Infinity 没有诊断 payload，所以第一行只有符号；payload 行专属于 NaN / sNaN：
 
@@ -172,11 +180,13 @@ $ bitnum bits binary16 1.0
 $ bitnum bits binary16 0.1
 2E66
 bitnum: note: rounded (inexact)
-exit=0
 ```
 
 0.1 不是 binary16 可表示的，`2E66` 是最近偶数舍入的结果，并且**显式声明了 inexact**
-（写到 stderr，stdout 保持干净可管道）。
+（写到 stderr，stdout 保持干净可管道）。退出码仍是 0：舍入有确定答案，不是数据错误。
+（本文这一块以前多写了一行 `exit=0`；`DEMO` 只在**非零**退出时写 `exit=N`，
+这一行的存在会让读者以为照抄的命令比实际少一行。`demo_replay_wbtest.mbt` 现在
+逐行对拍本文全部 48 条 `bitnum` 块。）
 
 ```
 $ bitnum bits bfloat16 1.0
@@ -231,14 +241,12 @@ exit=1
 $ bitnum bits binary16 1e999
 7C00
 bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
-exit=0
 ```
 
 ```
 $ bitnum bits binary16 -1e999
 FC00
 bitnum: note: '-1e999' is too large for binary64; rounded to infinity (inexact)
-exit=0
 ```
 
 下溢端是对称的（BN-B10，修复自 2026-11-10 审计）。`1e-999` 量级低于 binary64 的最小
@@ -249,7 +257,6 @@ exit=0
 $ bitnum bits binary16 1e-999
 0000
 bitnum: note: '1e-999' is too small for binary64; rounded to zero (inexact)
-exit=0
 ```
 
 真正表示零的字面量（`0` / `-0` / `0e-999`）仍然静默 —— 它们的零是精确的，没有舍入可
@@ -259,7 +266,6 @@ exit=0
 $ bitnum bits binary16 1e-320
 0000
 bitnum: note: rounded (inexact)
-exit=0
 ```
 
 判据是字面量里**是否含非零数字**（指数部分不算），所以 `0.000e-999` 静默、
@@ -271,7 +277,6 @@ exit=0
 $ bitnum bits bfloat16 1e999
 7F80
 bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
-exit=0
 ```
 
 bfloat16 还有**第二级**溢出，因为它要经过 `double → float → bf16` 两次窄化。
@@ -283,7 +288,6 @@ bfloat16 还有**第二级**溢出，因为它要经过 `double → float → bf
 $ bitnum bits bfloat16 1e39
 7F80
 bitnum: note: '1e39' is too large for binary32; rounded to infinity (inexact)
-exit=0
 ```
 
 说明里写 `binary32` 而不是 `binary64`：越界的是第二级容器，binary64 那一档是好的。
@@ -299,7 +303,6 @@ exit=0
 $ bitnum bits bfloat16 1e-46
 0000
 bitnum: note: '1e-46' is too small for binary32; rounded to zero (inexact)
-exit=0
 ```
 
 判据同样落在「第一次窄化实际产生了什么」上（非零字面量 + 窄化结果为 ±0），
@@ -482,6 +485,11 @@ bitnum: non-hex character in 'ZZZZ'
 exit=1
 ```
 
+（校验顺序：先格式、再长度、最后字符。所以 `value decimal32 ZZZZ` 报的是
+`decimal32 is 8 hex digits, got 4`，`value nosuch ZZZZ` 报的是 `unknown format`
+——同一份输入在不同格式下拒在不同的一道门上，这本身是有意的：先拒绝你不知道在问
+哪种格式，再拒绝长度对不上，最后才逐字符挑错。）
+
 十进制 `bits` 的词法拒绝是**另一句话**：它不经过「不能精确表示」的外壳，因为
 根本没有值被舍入（BN-B9，修复自 2026-11-10 审计）。修复前这些全是
 `cannot represent no digits in nan exactly` 这类病句：
@@ -605,7 +613,6 @@ exit=1
 $ bitnum bits binary16 1e999
 7C00
 bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
-exit=0
 ```
 
 退出码：0 成功 / 1 数据错误 / 2 用法错误。
