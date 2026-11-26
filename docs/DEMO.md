@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 201, passed: 201, failed: 0.
+Total tests: 202, passed: 202, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -621,10 +621,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 201, passed: 201, failed: 0.
+Total tests: 202, passed: 202, failed: 0.
 ```
 
-201 条测试的覆盖规模（不是"201 个断言"，是 201 条测试里有几条是穷举）：
+202 条测试的覆盖规模（不是"202 个断言"，是 202 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
