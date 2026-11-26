@@ -135,6 +135,7 @@ A2500001  finite      -1                          (negative one)
 78000000  infinity    Infinity                    (+infinity)
 F8000000  infinity    -Infinity                   (-infinity)
 7C000000  nan         NaN                         (quiet NaN)
+7C0003E7  nan         NaN767                      (quiet NaN, payload 999)
 
 Emax=96  Emin=-95  Etiny=-101  Emax_top=90
 max exponent: 96 with a 7-digit coefficient, 90 for anything narrower (zero included)
@@ -267,7 +268,7 @@ pub(all) struct FloatConversion {
 
 ```
 $ moon test
-Total tests: 215, passed: 215, failed: 0.
+Total tests: 218, passed: 218, failed: 0.
 ```
 
 ## 证据

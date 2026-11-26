@@ -760,6 +760,14 @@ fn table_text(fmt : FormatName) -> String raise @lib.BitnumError {
         (@lib.Decimal::infinity(false), "+infinity"),
         (@lib.Decimal::infinity(true), "-infinity"),
         (@lib.Decimal::nan(false, @bigint.BigInt::from_int(0)), "quiet NaN"),
+        // The row that keeps this column honest: a NaN with a non-zero payload is the
+        // only kind whose text depends on the renderer's width argument. With the
+        // width-less `to_scientific_string()` this row printed `NaN` — the payload
+        // silently absent — which is exactly the invisible-path shape of BN-21-1.
+        (
+          @lib.Decimal::nan(false, @bigint.BigInt::from_int(999)),
+          "quiet NaN, payload 999",
+        ),
       ]
       lines.push(
         @lib.pad_right("hex", f.hex_width()) +
@@ -775,7 +783,11 @@ fn table_text(fmt : FormatName) -> String raise @lib.BitnumError {
           "  " +
           @lib.pad_right(v.kind.label(), 10) +
           "  " +
-          @lib.pad_right(v.to_scientific_string(), 26) +
+          // The same renderer `value` and `check` use, at the same width. The
+          // width-less entry point prints a bare `NaN` by contract, so this column
+          // used to drop the payload of every NaN row — invisible while the table had
+          // only a zero-payload row (BN-21-2).
+          @lib.pad_right(decimal_value_text(f, v), 26) +
           "  (" +
           note +
           ")",

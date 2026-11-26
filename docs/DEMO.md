@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 215, passed: 215, failed: 0.
+Total tests: 218, passed: 218, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -425,6 +425,7 @@ A2500001  finite      -1                          (negative one)
 78000000  infinity    Infinity                    (+infinity)
 F8000000  infinity    -Infinity                   (-infinity)
 7C000000  nan         NaN                         (quiet NaN)
+7C0003E7  nan         NaN767                      (quiet NaN, payload 999)
 
 Emax=96  Emin=-95  Etiny=-101  Emax_top=90
 max exponent: 96 with a 7-digit coefficient, 90 for anything narrower (zero included)
@@ -445,6 +446,7 @@ A238000000000001  finite      -1                          (negative one)
 7800000000000000  infinity    Infinity                    (+infinity)
 F800000000000000  infinity    -Infinity                   (-infinity)
 7C00000000000000  nan         NaN                         (quiet NaN)
+7C000000000003E7  nan         NaN767                      (quiet NaN, payload 999)
 
 Emax=384  Emin=-383  Etiny=-398  Emax_top=369
 max exponent: 384 with a 16-digit coefficient, 369 for anything narrower (zero included)
@@ -465,6 +467,7 @@ A2080000000000000000000000000001  finite      -1                          (negat
 78000000000000000000000000000000  infinity    Infinity                    (+infinity)
 F8000000000000000000000000000000  infinity    -Infinity                   (-infinity)
 7C000000000000000000000000000000  nan         NaN                         (quiet NaN)
+7C0000000000000000000000000003E7  nan         NaN767                      (quiet NaN, payload 999)
 
 Emax=6144  Emin=-6143  Etiny=-6176  Emax_top=6111
 max exponent: 6144 with a 34-digit coefficient, 6111 for anything narrower (zero included)
@@ -621,10 +624,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 215, passed: 215, failed: 0.
+Total tests: 218, passed: 218, failed: 0.
 ```
 
-215 条测试的覆盖规模（不是"215 个断言"，是 215 条测试里有几条是穷举）：
+218 条测试的覆盖规模（不是"218 个断言"，是 218 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -652,9 +655,8 @@ Total tests: 215, passed: 215, failed: 0.
 | 渲染口径矩阵 | **5** 格式 × 6 个 datum 的 `value` token（`0` / `-0` / `±Infinity` / `NaN` / `-NaN`） |
 | 最大有限值之上的中点 | 2 格式 × 5 模式 × 双符号（B4 补的那一格） |
 | 舍入模式 | 5 种 × 向量表 |
-| `bits` 非法字面量 | 9 条（语法错 6 + 溢出 4 + 分类 9 + 符号 2 + hex/note 8 + 措辞 2 + specials 3） |
+| `bits` 非法字面量 | **40 条断言**（`lexical_wbtest` 26 + `hex_input_wbtest` 10 + `parse_surrogate_wbtest` 4），分布在 7 个测试里；2026-11-29 按源码实数重写（旧行写"9 条（6+4+9+2+8+2+3）"，括注合计 34，与 9 对不上，也从未对过） |
 
 `bits` 那 9 条断言的是退出码、stdout/stderr 的分配、以及拒绝措辞里含原输入文本 ——
 不是 `0000` 这 4 个字符。修复前后 hex 可能相同（例如本来就该是 `+0` 的输入），
 只比 hex 的测试抓不到 BN-1。
-

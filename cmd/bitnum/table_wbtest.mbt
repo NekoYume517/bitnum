@@ -58,23 +58,23 @@ fn table_of(fmt : FormatName) -> String {
 test "table: README's decimal32 block is the tool's output, byte for byte" {
   let readme = @fs.read_file_to_string("README.md")
   let want = fenced_block_after(readme, "$ bitnum table decimal32")
-  // Title + header + 11 rows + a blank line + the two ceiling lines.
-  inspect(want.split("\n").collect().length(), content="16")
+  // Title + header + 12 rows + a blank line + the two ceiling lines.
+  inspect(want.split("\n").collect().length(), content="17")
   inspect(table_of(DecimalFmt(@lib.Decimal32)), content=want)
 }
 
 ///|
 /// All five reports, against the blocks DEMO quotes. The binary ones stop after
 /// the rows (13 lines); the decimal ones carry the blank line and the two
-/// ceiling lines (16).
+/// ceiling lines (17 — the payload row added in round 21 made it one more).
 test "table: every report is the block DEMO quotes, byte for byte" {
   let demo = @fs.read_file_to_string("docs/DEMO.md")
   let cases : Array[(String, FormatName, Int32)] = [
     ("$ bitnum table binary16", Binary16Fmt, 13),
     ("$ bitnum table bfloat16", Bfloat16Fmt, 13),
-    ("$ bitnum table decimal32", DecimalFmt(@lib.Decimal32), 16),
-    ("$ bitnum table decimal64", DecimalFmt(@lib.Decimal64), 16),
-    ("$ bitnum table decimal128", DecimalFmt(@lib.Decimal128), 16),
+    ("$ bitnum table decimal32", DecimalFmt(@lib.Decimal32), 17),
+    ("$ bitnum table decimal64", DecimalFmt(@lib.Decimal64), 17),
+    ("$ bitnum table decimal128", DecimalFmt(@lib.Decimal128), 17),
   ]
   for entry in cases {
     let (marker, fmt, lines) = entry

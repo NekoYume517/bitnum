@@ -157,7 +157,7 @@ test "decimal64: seven spare payload bits never become a sixth digit group" {
     let (value, why) = shape
     for quiet in [true, false] {
       // spare 0, 1, and every spare bit (7 of them for decimal64).
-      for spare in [0, 1, 0x7F] {
+      for spare in 0..<128 {
         let hex = nan_hex_with_spare(f, value, spare, quiet) catch {
           e => {
             bad.push("\{why}: encode raised (\{e})")
@@ -222,7 +222,7 @@ test "decimal128: eleven spare payload bits never become a twelfth group" {
   for shape in cases {
     let (value, why) = shape
     for quiet in [true, false] {
-      for spare in [0, 1, 0x7FF] {
+      for spare in 0..<2048 {
         let hex = nan_hex_with_spare(f, value, spare, quiet) catch {
           e => {
             bad.push("\{why}: encode raised (\{e})")
