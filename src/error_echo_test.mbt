@@ -61,8 +61,13 @@ test "message: an unparsable input carrying a lone surrogate renders printable t
     // No code unit of the message is left without a character, so printing it
     // cannot trap on any backend.
     inspect(orphan_units(msg), content="0")
-    // Exactly the one unit became a replacement; the rest still reads as before.
-    inspect(msg.contains("\u{FFFD}"), content="true")
+    // Exactly the one unit is spelled out; the rest still reads as before.
+    // (2026-11 round 19: the spelling is `\u{D800}`, not U+FFFD — the unit is
+    // named, so a reader can see *which* unit was rejected instead of only that
+    // something was. See `printable_text_test.mbt`.)
+    inspect(msg.contains("\u{FFFD}"), content="false")
+    let spelled = "\\u{" + code.to_string(radix=16).to_upper() + "}"
+    inspect(msg.contains(spelled), content="true")
     inspect(msg.contains("cannot parse '0"), content="true")
     inspect(msg.contains("0': non-hex character"), content="true")
     // The error's field is untouched: a caller can still find the unit.

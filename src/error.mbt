@@ -97,22 +97,30 @@ pub(all) suberror BitnumError {
 }
 
 ///|
-/// `text` with every code unit that is not a character replaced by U+FFFD.
+/// `text` rendered as something a human — or a script parsing stdout — can read
+/// on one line.
 ///
-/// A message is text for a human, and the runtime encodes it when it is
-/// printed. A `String` can hold code units that are not characters — a lone
-/// surrogate, whether injected with `unsafe_to_char` or carried in through a
-/// native `argv` — and such a sequence has no UTF-8 form: the wasm backend
-/// traps at `fprintln`, the native one drops the line, both behind a `raise`
-/// signature that promised the caller a catchable error. `from_hex` and
-/// `parse_decimal` were made total over those code units on 2026-11-23 and
-/// 2026-11-24; this is the third one, the sentence they raise.
+/// A message is text for a human, and the runtime encodes it when it is printed.
+/// A `String` can hold code units that are not characters (a lone surrogate has
+/// no UTF-8 form), and it can hold characters that *are* characters but do not
+/// print: `U+000D`/`U+000A` end the line, `U+001B` starts a terminal sequence that
+/// repaints the screen. Both families have to leave the message safe:
 ///
-/// The error's **field** keeps the caller's text verbatim — that is how a caller
-/// locates the offending unit — and only the rendering is repaired. U+FFFD is
-/// the standard's own answer for "a unit that has no character", and a
-/// well-formed astral character (an emoji, a CJK extension ideograph) passes
-/// through unchanged: it *is* a character, and calling it broken would be a lie.
+/// * A code unit that is not a character becomes `\u{XXXX}` naming that unit. It
+///   used to become U+FFFD, which said only "something was here" — the error
+///   field keeps the caller's text verbatim, so a reader that wants to locate the
+///   offending unit had nothing to locate.
+/// * A character in general category `Cc`, `Cf`, `Zl` or `Zp`, plus `U+FFFD`
+///   itself, also becomes `\u{XXXX}`. Everything else is quoted unchanged:
+///   printable non-ASCII is a character, and calling an emoji (or a CJK
+///   extension ideograph) broken would be a lie.
+///
+/// `U+0020` is deliberately kept: it cannot move the cursor, and a CSV- or
+/// shell-flavoured message that printed `\u{0020}` would be harder to read than
+/// the input it describes. This is the same repair `from_hex` (2026-11-23) and
+/// `parse_decimal` (2026-11-24) got on the *acceptance* side; this is the
+/// *reporting* side, and it is the third and last place a rejection sentence
+/// could smuggle caller data into the tool's own line-oriented output.
 pub fn printable_text(text : String) -> String {
   let sb = StringBuilder()
   let n = text.length()
@@ -120,18 +128,91 @@ pub fn printable_text(text : String) -> String {
   while i < n {
     match text.get_char(i) {
       Some(c) => {
-        sb.write_char(c)
+        let code = c.to_int()
+        if is_non_printing(code) {
+          sb.write_string("\\u{")
+          write_hex4(sb, code)
+          sb.write_string("}")
+        } else {
+          sb.write_char(c)
+        }
         // A scalar above the BMP occupies two code units; the walk must step
         // over the low half, which decodes to nothing on its own.
-        i = i + (if c.to_int() > 0xFFFF { 2 } else { 1 })
+        i = i + (if code > 0xFFFF { 2 } else { 1 })
       }
       None => {
-        sb.write_char('\u{FFFD}')
+        sb.write_string("\\u{")
+        write_hex4_raw(sb, text.code_unit_at(i).to_int())
+        sb.write_string("}")
         i = i + 1
       }
     }
   }
   sb.to_string()
+}
+
+///|
+/// Whether a scalar has to be spelled as an escape rather than quoted.
+///
+/// `Cc` (C0/C1 controls, `U+007F`), `Cf` (bidi overrides, zero-width joiners,
+/// the BOM), the two line/paragraph separators, and `U+FFFD` — which is what
+/// this module used to write for "no character", so a caller's real U+FFFD would
+/// otherwise be indistinguishable from that report.
+fn is_non_printing(code : Int32) -> Bool {
+  if code < 0x20 {
+    true
+  } else if code >= 0x7F && code <= 0x9F {
+    true
+  } else if code == 0x2028 || code == 0x2029 {
+    true
+  } else if code == 0xFFFD {
+    true
+  } else if code >= 0x200B && code <= 0x200F {
+    true
+  } else if code == 0x061C {
+    true
+  } else if code >= 0x202A && code <= 0x202E {
+    true
+  } else if code >= 0x2060 && code <= 0x2064 {
+    true
+  } else if code == 0x2066 || code == 0x2069 {
+    true
+  } else if code >= 0xFE00 && code <= 0xFE0F {
+    true
+  } else if code == 0xFEFF {
+    true
+  } else {
+    code >= 0xE0000 && code <= 0xE007F
+  }
+}
+
+///|
+/// Four-digit uppercase hex, zero padded, for a code point below `U+10000`.
+fn write_hex4(sb : StringBuilder, code : Int32) -> Unit {
+  write_hex_padded(sb, code, 4)
+}
+
+///|
+/// Same, for a raw code unit (which may be a surrogate and therefore always
+/// below `U+10000`).
+fn write_hex4_raw(sb : StringBuilder, unit : Int32) -> Unit {
+  write_hex_padded(sb, unit, 4)
+}
+
+///|
+fn write_hex_padded(sb : StringBuilder, value : Int32, digits : Int32) -> Unit {
+  let mut shift = (digits - 1) * 4
+  while shift >= 0 {
+    let nibble = (value >> shift) & 0xF
+    sb.write_char(
+      (if nibble < 10 {
+        '0'.to_int() + nibble
+      } else {
+        'A'.to_int() + nibble - 10
+      }).unsafe_to_char(),
+    )
+    shift = shift - 4
+  }
 }
 
 ///|
