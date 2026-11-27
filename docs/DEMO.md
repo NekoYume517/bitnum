@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 218, passed: 218, failed: 0.
+Total tests: 224, passed: 224, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -624,10 +624,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 218, passed: 218, failed: 0.
+Total tests: 224, passed: 224, failed: 0.
 ```
 
-218 条测试的覆盖规模（不是"218 个断言"，是 218 条测试里有几条是穷举）：
+224 条测试的覆盖规模（不是"224 个断言"，是 224 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
@@ -650,13 +650,14 @@ Total tests: 218, passed: 218, failed: 0.
 | `parse_decimal` 词法全空间 | 孤立代理项 4 个端点 × 8 个槽位 × 3 个格式；BMP 每个标量（63 488 个）在首槽与次槽的归属 |
 | 错误回显 | 4 个孤立代理项端点的消息「无解不出字符的码元」+ astral 字符原样 + 字段保真 |
 | `table` 报告 | **5** 个格式的报告逐字节对齐 DEMO / README 引用的围栏块 |
-| `docs/DEMO.md` 的全部 `bitnum` 块 | **48** 条命令逐行回放，含退出码与 stdout/stderr 分配（`cmd/bitnum/demo_replay_wbtest.mbt`） |
+| `docs/DEMO.md` 的全部 `bitnum` 块 | **53** 条命令逐行回放，含退出码与 stdout/stderr 分配（48 条 `value`/`bits`/`check` 由 `cmd/bitnum/demo_replay_wbtest.mbt` 回放，5 条 `table` 由 `cmd/bitnum/table_wbtest.mbt`） |
 | 拒绝语的行形态 | CRLF / C0 / C1 / 格式字符 / 孤立代理项共 9 个码元在 `printable_text` 下的转义，加 3 条端到端 `describe` 断行 |
 | 渲染口径矩阵 | **5** 格式 × 6 个 datum 的 `value` token（`0` / `-0` / `±Infinity` / `NaN` / `-NaN`） |
 | 最大有限值之上的中点 | 2 格式 × 5 模式 × 双符号（B4 补的那一格） |
 | 舍入模式 | 5 种 × 向量表 |
 | `bits` 非法字面量 | **40 条断言**（`lexical_wbtest` 26 + `hex_input_wbtest` 10 + `parse_surrogate_wbtest` 4），分布在 7 个测试里；2026-11-29 按源码实数重写（旧行写"9 条（6+4+9+2+8+2+3）"，括注合计 34，与 9 对不上，也从未对过） |
 
-`bits` 那 9 条断言的是退出码、stdout/stderr 的分配、以及拒绝措辞里含原输入文本 ——
+`bits` 那 40 条断言的是退出码、stdout/stderr 的分配、以及拒绝措辞里含原输入文本 ——
 不是 `0000` 这 4 个字符。修复前后 hex 可能相同（例如本来就该是 `+0` 的输入），
-只比 hex 的测试抓不到 BN-1。
+只比 hex 的测试抓不到 BN-1。这里的 40 由 `cmd/bitnum/doc_block_count_wbtest.mbt`
+从三个文件的 `inspect(` 调用数直接读出，改源码而不改文档会让该测试红。
