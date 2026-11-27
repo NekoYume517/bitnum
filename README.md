@@ -172,8 +172,13 @@ bfloat16 模式）：
 |---|---|---|
 | 非 NaN（65282 个） | 加宽后逐位相等 | 同左 |
 | quiet NaN（128 个） | 原样 | 原样 |
-| signaling NaN（126 个，payload 在 bit 16..21） | 原样，仍是 sNaN | `0x7FC0 \| (payload >> 1)` |
-| `0x7F7F` / `0x7FFF`（payload 在 bit 16 不可见） | 原样 | 落到规范 quiet NaN |
+| signaling NaN（126 个，payload 在 bit 16..21） | 原样，仍是 sNaN | 「置 quiet 位、其余位不动」，`0x7F81` → `0x7FC1` |
+| signaling NaN `0x7FBF`（payload 落在 binary32 看不见的位置） | 原样，仍是 sNaN | 变成 `0x7FFF0000`，即**无穷**模式 |
+| quiet NaN `0x7FFF`（同一个看不见的位置） | 原样 | 原样 |
+
+表中 `0x7F7F` **不是** NaN —— 它的指数域是 `0xFE`，那是 bfloat16 的**最大有限值**
+（`bitnum table bfloat16` 里 `max finite` 那一行，3.3895313892515355e+38）。
+"payload 看不见"的 sNaN 是 `0x7FBF`。
 
 **同一处分裂在 `0.1.20261117` 上就有**，1.0 没有引入它，只是把它暴露出来。处理办法不是
 去掰 js 的 NaN 语义（掰不回来），而是把**结论**与**位**分开：
@@ -314,7 +319,7 @@ pub(all) struct FloatConversion {
 
 ```
 $ moon test
-Total tests: 227, passed: 227, failed: 0.
+Total tests: 229, passed: 229, failed: 0.
 ```
 
 ## 证据

@@ -190,7 +190,8 @@ js 上没有 f32，`Float` 先是一个 JS number，而 JS number 里的 NaN 只
 | 非 NaN（65282 个） | 加宽后与模式逐位相等 | 同左 |
 | quiet NaN（128 个，含 Inf） | 原样 | 原样 |
 | signaling NaN，payload 在 bit 16..21（126 个） | 原样，仍是 sNaN | 变成 `0x7FC0 | (payload >> 1)`，即 `0x7F81` → `0x7FC1` |
-| signaling NaN `0x7F7F` / `0x7FFF`（payload 在 bit 16 不可见） | 原样 | 落到规范 quiet NaN |
+| signaling NaN，payload 在 binary32 的可见位上是 0（`0x7FBF`） | 原样，仍是 sNaN | 变成 `0x7FFF0000`，即**无穷**模式 |
+| quiet NaN `0x7FFF`（同一个不可见 payload 位置） | 原样 | 原样（`0x7FFF0000`） |
 
 同一处分裂在 `0.1.20261117` 上就有（当时 js 报的是「payload 整体右移到 bits 22..28 之外的
 一种形态」），1.0 没有引入它，只是把它暴露成 `bitnum` 唯一一个**各后端结果不可互换**的格式。
