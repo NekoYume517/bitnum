@@ -17,7 +17,7 @@ $ moon check
 Finished. moon: ran 1 task, now up to date
 
 $ moon test
-Total tests: 226, passed: 226, failed: 0.
+Total tests: 227, passed: 227, failed: 0.
 
 $ moon build --target wasm
 Artifacts:
@@ -33,18 +33,15 @@ Finished. moon: ran 31 tasks, now up to date
 （`ran N tasks` 里的数字随缓存状态变化：全新 clone 上是几十个任务，增量时是 `no work
 to do`。这里记的是本轮收尾那次运行的真实输出。）
 
-**`moon fmt --check` 必须先跑一次 `moon fmt`**，顺序不能反。`--check` 的实现是把源码
-和 `_build/<target>/release/format/` 下的格式化副本做 `git diff --no-index`；
-如果那个目录还不存在（全新 clone、或刚删过 `_build`），它就直接失败：
+**`moon fmt --check` 在干净的 `_build` 上也能直接跑**（2026-11-27 实测，`moonc
+v1.0.0-rc1`）：全新 `git clone`、`_build` 完全不存在时，它自己生成格式化副本再比对，
+退出码 0。
 
-```
-$ moon fmt --check        # 在干净的 _build 上
-error: open("...\_build\wasm-gc\release\format\src\decimal_wire.mbt"): No such file or directory
-Error: failed when formatting project
-```
-
-这不是「格式不对」，是产物目录缺失。先 `moon fmt` 生成副本，再 `--check` 就正常。
-CI 里如果只写 `moon fmt --check`，在 fresh runner 上会假红。
+这一节早先记的是相反的结论：说产物目录缺失时 `--check` 会直接失败，并要求先跑一次
+`moon fmt`；还建议 CI 里也别只写 `--check`。那是**旧工具链**的行为，现已撤掉——
+当前 `.github/workflows/ci.yml` 就是在全新 runner 上直接跑 `moon fmt --check`，
+一直是绿的，本轮又在没有 `_build` 的干净树上复测过一次。按旧说法先跑 `moon fmt`
+反而会先改写文件、让 `--check` 失去意义。旧的那段报错输出不再作为本文件的实测记录。
 
 ## 1. 权威向量
 
@@ -624,10 +621,10 @@ bitnum: note: '1e999' is too large for binary64; rounded to infinity (inexact)
 
 ```
 $ moon test
-Total tests: 226, passed: 226, failed: 0.
+Total tests: 227, passed: 227, failed: 0.
 ```
 
-226 条测试的覆盖规模（不是"226 个断言"，是 226 条测试里有几条是穷举）：
+227 条测试的覆盖规模（不是"227 个断言"，是 227 条测试里有几条是穷举）：
 
 | 测试 | 规模 |
 |---|---|
