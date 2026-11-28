@@ -29,7 +29,7 @@ bfloat16 就是 binary32 的高 16 位；decimal 有个五位"组合字段"把�
 
 ## 安装与运行
 
-**作为库依赖**：
+**作为库依赖**（已发布到 [mooncakes.io](https://mooncakes.io/docs/NekoYume517/bitnum)，当前版本 `0.1.0`）：
 
 ```bash
 moon add NekoYume517/bitnum
