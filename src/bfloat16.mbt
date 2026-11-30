@@ -86,8 +86,25 @@ pub fn BFloat16::bits(self : BFloat16) -> UInt16 {
 ///|
 /// Widen to binary32. Exact for every pattern, including NaN payloads: the
 /// significand is zero-extended and nothing is shifted out.
+///
+/// Safe to call from any backend: a signaling NaN stays *signaling* (`to_f32(0x7F81)`
+/// is `0x7F810000` on wasm, wasm-gc and js alike), because the pattern is built by
+/// `bfloat16_to_f32_bits` and the bits below bit 16 are never touched by an
+/// arithmetic operation. `Binary16::to_f64` on 0.1.20261117 quantized a signaling
+/// NaN on the js backend; the same hazard is why this function is written this way
+/// (2026-11-30 toolchain 1.0 audit, BN-p).
 pub fn BFloat16::to_f32(self : BFloat16) -> Float {
-  Float::reinterpret_from_uint(self.encode().to_uint() << 16)
+  Float::reinterpret_from_uint(self.to_f32_bits())
+}
+
+///|
+/// The binary32 bit pattern `self.to_f32()` decodes from.
+///
+/// For a NaN this is the *only* way to observe the payload: any hop through a
+/// `Float` value object is free to quiet the NaN (`is_nan` sees a NaN either way,
+/// so nothing catches it).
+pub fn BFloat16::to_f32_bits(self : BFloat16) -> UInt32 {
+  bfloat16_to_f32_bits(self.encode())
 }
 
 ///|
@@ -110,7 +127,16 @@ pub fn BFloat16::to_f64(self : BFloat16) -> Double {
 /// would see `exp_field == 0xFF && sig == 0` for an infinity and for a
 /// payload-starved NaN alike, and could not tell them apart.
 pub fn of_f32_truncate(f : Float) -> UInt16 {
-  let u = f.reinterpret_as_uint()
+  of_f32_truncate_pattern(Float::reinterpret_as_uint(f))
+}
+
+///|
+/// `of_f32_truncate` on a binary32 **bit pattern**, so the input can be a pattern
+/// this toolchain cannot carry through a value — a signaling NaN on the js backend
+/// is a quiet NaN the moment it is a `Float`, and this entry point is how a test
+/// states what truncation does to the pattern itself on every backend
+/// (2026-11-30 toolchain 1.0 audit, BN-p).
+pub fn of_f32_truncate_pattern(u : UInt32) -> UInt16 {
   let high = (u >> 16) & 0xFFFF
   let exp_field = ((u >> 23) & 0xFF).to_int()
   let mantissa = u & 0x7FFFFF
@@ -133,7 +159,14 @@ pub fn of_f32_truncate(f : Float) -> UInt16 {
 /// bfloat16 subnormal, and a binary32 value near the top can round to infinity.
 /// All three cases go through the same exact integer rounding as binary16.
 pub fn of_f32(f : Float, mode : RoundingMode) -> FloatConversion {
-  let u = f.reinterpret_as_uint()
+  of_f32_pattern(Float::reinterpret_as_uint(f), mode)
+}
+
+///|
+/// `of_f32` on a binary32 **bit pattern** — the same reason as
+/// `of_f32_truncate_pattern`: a quieting conversion is specified on the pattern, and
+/// on the js backend a signaling pattern cannot reach it through a `Float` value.
+pub fn of_f32_pattern(u : UInt32, mode : RoundingMode) -> FloatConversion {
   let sign = ((u >> 31) & 1).to_int()
   let exp_field = ((u >> 23) & 0xFF).to_int()
   let mantissa = u & 0x7FFFFF
@@ -201,6 +234,59 @@ pub fn of_f32(f : Float, mode : RoundingMode) -> FloatConversion {
 /// dedicated name because it is what numeric libraries mean by "round".
 pub fn of_f32_round(f : Float) -> FloatConversion {
   of_f32(f, NearestEven)
+}
+
+///|
+/// The pattern `BFloat16::to_f32` is specified to produce for one bfloat16
+/// pattern — computed **without ever forming a `Float`** (2026-11-30 toolchain
+/// 1.0 audit, BN-p).
+///
+/// This is the definition `to_f32` was always trying to state: sign to bit 31,
+/// exponent to bits 30..23, the 7-bit significand to bits 22..16, and zeros below.
+///
+/// It is spelled out here because the bit-level spelling is *portable* and the
+/// arithmetic one is not. Widening is `reinterpret(Float, bits << 16)`, and a
+/// bfloat16 signaling NaN widened that way is a signaling NaN in binary32: whether
+/// the quiet bit then survives depends on which backend moved the value, because
+/// JS has one number type and normalises any NaN it touches to the canonical quiet
+/// one. Under `moonc v1.0.0-rc1` the wasm backend answered `0x7F810000` for
+/// `to_f32(0x7F81)` and the js backend `0x7FC00000`. THE SAME SPLIT EXISTED ON
+/// 0.1.20261117 — it was latent, not introduced by 1.0 — but it is what made
+/// bfloat16 the one format whose backend results were not interchangeable, so it
+/// is closed here rather than documented as a platform difference.
+pub fn bfloat16_to_f32_bits(bits : UInt16) -> UInt32 {
+  bits.to_uint() << 16
+}
+
+///|
+/// The bit pattern a `Float` **is**, for a binary32 bit string, as this toolchain's
+/// library reads one back — and the reason that condition has a name.
+///
+/// `Float::reinterpret_from_uint(p).reinterpret_as_uint()` is the only spelling of
+/// "build this pattern, read it back" this toolchain offers, and it is not a bit copy
+/// on every backend: the js target keeps no f32, the value goes through a JS number,
+/// and a NaN in a JS number is always quiet with its payload squeezed into 7 bits.
+/// So the round trip *normalises* a NaN — measured, `0x7F810000` comes back
+/// `0x7FC00000` — and leaves every non-NaN pattern alone.
+///
+/// It does not collapse the two directions, though: a signaling NaN makes the round
+/// trip quiet the pattern, but *any* quiet NaN is already its own round trip, so the
+/// round trip is the identity on all three backends for patterns without a quiet
+/// bit. Everything the library converts — widening results, powers of two — is in
+/// that class on wasm, so the round trip is exactly `reinterpret_as_uint` there;
+/// on js it is the normalisation the backend performs anyway.
+pub fn f32_pattern(f : Float) -> UInt32 {
+  Float::reinterpret_from_uint(Float::reinterpret_as_uint(f)).reinterpret_as_uint()
+}
+
+///|
+/// Whether `f32_pattern` is the identity on this backend's *values* — i.e. whether a
+/// `Float` this toolchain gives you back can still be a signaling NaN. True on wasm
+/// and wasm-gc (the reinterpret is a load), false on js (there is no f32 to keep it
+/// signaling in). The bfloat16 tests use it to assert what the value route is
+/// specified to produce per backend; the library itself never branches on it.
+pub fn f32_pattern_keeps_signaling(f : Float) -> Bool {
+  f32_pattern(f) == Float::reinterpret_as_uint(f)
 }
 
 ///|

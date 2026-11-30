@@ -15,6 +15,8 @@ pub let bfloat16_patterns : Int32
 
 pub let bfloat16_sig_bits : Int32
 
+pub fn bfloat16_to_f32_bits(UInt16) -> UInt32
+
 pub fn bfloat16_value_text(UInt16) -> String
 
 pub fn big_slice(@bigint.BigInt, Int32, Int32) -> @bigint.BigInt
@@ -59,6 +61,10 @@ pub let dpd_redundant_codes : Array[Int32]
 
 pub fn dpd_triple_text(Int32) -> String raise BitnumError
 
+pub fn f32_pattern(Float) -> UInt32
+
+pub fn f32_pattern_keeps_signaling(Float) -> Bool
+
 pub fn format_double(Double) -> String
 
 pub fn infinity_double() -> Double
@@ -69,9 +75,13 @@ pub fn numerically_equal(Decimal, Decimal) -> Bool
 
 pub fn of_f32(Float, RoundingMode) -> FloatConversion
 
+pub fn of_f32_pattern(UInt32, RoundingMode) -> FloatConversion
+
 pub fn of_f32_round(Float) -> FloatConversion
 
 pub fn of_f32_truncate(Float) -> UInt16
+
+pub fn of_f32_truncate_pattern(UInt32) -> UInt16
 
 pub fn of_f64(Double, RoundingMode) -> FloatConversion raise BitnumError
 
@@ -125,6 +135,7 @@ pub fn BFloat16::bits(Self) -> UInt16
 pub fn BFloat16::decode(UInt16) -> Self
 pub fn BFloat16::encode(Self) -> UInt16
 pub fn BFloat16::to_f32(Self) -> Float
+pub fn BFloat16::to_f32_bits(Self) -> UInt32
 pub fn BFloat16::to_f64(Self) -> Double
 
 #derive(Eq, @debug.Debug)

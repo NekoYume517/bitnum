@@ -60,8 +60,21 @@ pub fn infinity_double() -> Double
 pub fn quiet_nan_double() -> Double
 ```
 
-`pow2_exact` 用精确折半构建，因为 libm 的 `pow` 只保证 1 ulp 内准确 —— 那个精度不足以
+`pow2_exact` 用精确的构造/折半构建，因为 libm 的 `pow` 只保证 1 ulp 内准确 —— 那个精度不足以
 声称 65536 项 binary16 表精确。
+
+**正规区间走位模式构造，不走算术**（2026-11-30 工具链 1.0 审计，BN-p）。`k >= -1022` 由私有的
+`pow2_normal` 处理：有偏阶码 `k + 1023` 左移 52 位再 `reinterpret_as_double`，一次移位、一条
+浮点指令都不执行，所以结果**按定义**就是 2 的幂，且与后端无关。理由是实测出来的两条：
+
+1. 只经过 `reinterpret_*` 和整数常量的 `Float`/`Double` 会被后端原样重发，模式不变；算术结果不是。
+   js 后端只有一种 number 类型，`Float` 是 binary64 算完再窄化，wasm 的 `f32` 有自己的舍入。
+   `Binary16::to_f64` 原来「先算 Double 再窄化成 Float」的写法，在 `moonc v1.0.0-rc1` 的 js
+   后端上 65536 个模式里有 2 个丢了最后一位。
+2. 代价：折半是 `|k|` 次迭代，构造是一次移位。
+
+次正规尾巴 `[-1074, -1023]` 借不到阶码域，仍然走 `pow2_doubling`；它最多 52 次，而且**必须**
+留在算术侧 —— 次正规的 2 的幂需要一个非零的 fraction，走位模式就得做除法。
 
 **`pow2_exact` 的域是 `[-1074, 1023]`，域外 `raise`**（2026-11-17 审计，BN-h）。原因有两条，
 都和 `low_mask64` 的「容器极限」注释同源：精确重复折半的工作量是 `|k|` 次迭代，所以无界的
@@ -153,13 +166,46 @@ pub fn BFloat16::decode(UInt16) -> BFloat16
 pub fn BFloat16::encode(BFloat16) -> UInt16
 pub fn BFloat16::bits(BFloat16) -> UInt16
 pub fn BFloat16::to_f32(BFloat16) -> Float        // 精确：尾数零扩展
+pub fn BFloat16::to_f32_bits(BFloat16) -> UInt    // 同一个加宽结果，读成位模式（不经 Float 值）
 pub fn BFloat16::to_f64(BFloat16) -> Double
+pub fn bfloat16_to_f32_bits(UInt16) -> UInt       // to_f32_bits 的自由函数形式
+pub fn f32_pattern(Float) -> UInt                 // 库自己的「值 → 位模式」读法
+pub fn f32_pattern_keeps_signaling(Float) -> Bool // 该后端能否让 sNaN 仍是 sNaN
 
 pub fn of_f32_truncate(Float) -> UInt16                          // 截断，丢弃低 16 位
+pub fn of_f32_truncate_pattern(UInt) -> UInt16                   // 同上，输入是位模式
 pub fn of_f32(Float, RoundingMode) -> FloatConversion            // 显式舍入
+pub fn of_f32_pattern(UInt, RoundingMode) -> FloatConversion     // 同上，输入是位模式
 pub fn of_f32_round(Float) -> FloatConversion                    // = of_f32(_, NearestEven)
 pub fn truncate_round_differ(Float) -> Bool                     // 两者是否分歧
 ```
+
+**`*_pattern` 入口存在的理由是「sNaN 在 js 后端过不了值」**（2026-11-30 工具链 1.0 审计，BN-p）。
+js 上没有 f32，`Float` 先是一个 JS number，而 JS number 里的 NaN 只有一个安静形态：payload
+7 位、静位为 1。于是 `Float::reinterpret_from_uint(0x7F810000)` 在 js 上拿回来就是
+`0x7FC00000`。实测（`moonc v1.0.0-rc1`，全部 65536 个 bfloat16 模式）：
+
+| 模式类 | wasm / wasm-gc | js |
+|---|---|---|
+| 非 NaN（65282 个） | 加宽后与模式逐位相等 | 同左 |
+| quiet NaN（128 个，含 Inf） | 原样 | 原样 |
+| signaling NaN，payload 在 bit 16..21（126 个） | 原样，仍是 sNaN | 变成 `0x7FC0 | (payload >> 1)`，即 `0x7F81` → `0x7FC1` |
+| signaling NaN `0x7F7F` / `0x7FFF`（payload 在 bit 16 不可见） | 原样 | 落到规范 quiet NaN |
+
+同一处分裂在 `0.1.20261117` 上就有（当时 js 报的是「payload 整体右移到 bits 22..28 之外的
+一种形态」），1.0 没有引入它，只是把它暴露成 `bitnum` 唯一一个**各后端结果不可互换**的格式。
+修法不是把 js 的 NaN 语义硬掰回来（掰不回来），而是把**结论**和**位**分开：
+
+* `to_f32_bits` / `bfloat16_to_f32_bits`：加宽结果作为位模式，全程整数，三后端逐位相等，
+  也是 NaN payload 唯一的可观测入口（`is_nan` 对 quiet / signaling 都是 true，看不出差别）。
+* `f32_pattern`：库自己的「值 → 位模式」读法，在 wasm 上就是 `reinterpret_as_uint`，在 js 上
+  就是 JS number 的规范形态。任何经过 `Float` 值的路径都用它，这样范式统一。
+* `of_f32*` / `of_f32_truncate*`：规约作用在**位模式**上，所以名字带 `_pattern` 的入口
+  与后端无关；接收 `Float` 的入口先 `reinterpret_as_uint`（调用方的值本来就已经是某个 JS
+  number 了，js 上再走一趟 `f32_pattern` 只会重复规范化）。
+
+`src/bfloat16_test.mbt` 的穷举用例把三种后端各自的口径逐位钉住，并额外断言
+`js_value_route_quiets_nans()`（该后端能否让 sNaN 仍是 sNaN）这个**测量事实**本身。
 
 `of_f32_truncate` 与 `of_f32` 是**两个不同的函数**，不是同一个加了开关：
 截断最多 2^-8 相对误差，就近舍入是一半。它们分别有名字，调用方不会误取。

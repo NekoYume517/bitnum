@@ -140,12 +140,25 @@ pub fn Binary16::to_f64(self : Binary16) -> Double {
     Subnormal => {
       // value = significand * 2^-24, exactly.
       let m = self.significand.to_double()
-      m * pow2_doubling(-24)
+      m * pow2_normal(-24)
     }
     Normal => {
       // value = (2^10 + significand) * 2^(exponent - 15 - 10), exactly.
+      //
+      // `pow2_normal`/`pow2_doubling`, not `pow2_exact`: this function has no
+      // `raise` channel, and the argument is in `-24..-5` — the normal binade, where
+      // the power of two is built from an exponent field instead of computed
+      // (2026-11-30 toolchain 1.0 audit, BN-p). The loop's `Double` arithmetic is
+      // what went wrong on the js backend: a `Float` narrowed from it lost the last
+      // bit for 2 of 65536 patterns. The product side below is still arithmetic —
+      // it must be, a binary64 needs 53 bits of significand and the fraction is
+      // generally non-zero — but this side, the power of two, is now exact by
+      // construction and backend-independent.
+      //
+      // The domain is a declared precondition, checked once by the exhaustive test
+      // over all 65536 patterns rather than 65536 times at run time.
       let m = (self.significand + 0x400).to_double()
-      m * pow2_doubling(self.exponent - 15 - 10)
+      m * pow2_normal(self.exponent - 15 - 10)
     }
   }
   if self.kind == Nan {

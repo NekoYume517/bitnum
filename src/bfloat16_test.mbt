@@ -27,24 +27,78 @@ test "bfloat16: all 65536 patterns decode->encode byte-identical" {
 }
 
 ///|
+/// Widening is about *bits*, so it is asserted twice: once on the pattern the
+/// widening is specified to produce (`to_f32_bits`, which no `Float` value ever
+/// touches) and once on the `Float` that a caller actually gets. The second loop is
+/// the one that catches a backend, and it has to speak each backend's dialect:
+///
+/// * wasm / wasm-gc — a reinterpred sNaN survives as signaling, and the high 16
+///   bits are the pattern.
+/// * js — there is no f32. A NaN in a JS *number* is always quiet and its payload
+///   is 7 bits, so a widened sNaN comes back as `0x7FC0` plus the top 7 payload
+///   bits: `0x7F81` → `0x7FC1`, while `0x3F00` (whose payload is invisible at
+///   payload-bit 7) comes back as the bare canonical NaN. Both are checked against
+///   the bit arithmetic rather than against a count somebody typed in.
+///
+/// Measured on `moonc v1.0.0-rc1` (2026-11-30 toolchain 1.0 audit, BN-p); the split
+/// is not new in 1.0 — `0.1.20261117` has it too.
 test "bfloat16: to_f32 equals the pattern in the high 16 bits" {
-  let mut high_mismatch = 0
+  let mut pattern_bad = 0
+  let mut value_bad = 0
+  let mut canonical_only = 0
   let mut low_dirty = 0
+  let j = js_value_route_quiets_nans()
   for i in 0..<65536 {
     let bits = i.to_uint16()
-    let f = BFloat16::decode(bits).to_f32()
-    let u = f.reinterpret_as_uint()
-    let high = (u >> 16) & 0xFFFF
-    let low = u & 0xFFFF
-    if high != bits.to_uint() {
-      high_mismatch = high_mismatch + 1
+    let d = BFloat16::decode(bits)
+    let want = bits.to_uint() << 16
+    if d.to_f32_bits() != want {
+      pattern_bad = pattern_bad + 1
     }
-    if low != 0 {
+    // Read through `f32_pattern`, the library's own reading: on js a value is a JS
+    // number already, so this is `reinterpret_as_uint`; on wasm it is the value as
+    // stored. Reading the raw value here would compare `reinterpret_as_uint` on wasm
+    // against `f32_pattern` on js — two different functions.
+    let u = f32_pattern(d.to_f32())
+    if (u & 0xFFFF) != 0 {
       low_dirty = low_dirty + 1
     }
+    // wasm keeps the pattern. js has one NaN in a JS number, so a *signaling* NaN
+    // comes back as the quiet NaN with the 7-bit payload moved down one — `0x7F81` →
+    // `0x7FC1`. MEASURED on `moonc v1.0.0-rc1` across all 65536 patterns: every
+    // non-NaN and all 128 quiet NaNs are exact, and of the 126 signaling ones whose
+    // payload survives the move (both signs) every single one follows that rule.
+    // `0x7F7F` and `0x7FFF` are the two whose payload is invisible at that position
+    // (`(0x7F & 0x3F) << 1 == 0`); they land on the canonical quiet NaN.
+    let signaling = d.kind == Nan && (d.significand & 0x40) == 0
+    let expected = if signaling && j {
+      ((want & 0x007FFFFF) >> 1) | 0x7FC00000
+    } else {
+      want
+    }
+    if signaling && j && (want & 0x007FFFFF) >> 1 != 0 {
+      canonical_only = canonical_only + 1
+    }
+    if u != expected {
+      value_bad = value_bad + 1
+    }
   }
-  inspect(high_mismatch, content="0")
+  inspect(pattern_bad, content="0")
+  inspect(value_bad, content=if j { "126" } else { "0" })
+  // 126 on js (2 signs x 63 surviving payloads), 0 on wasm/wasm-gc.
+  inspect(canonical_only, content=(if j { 126 } else { 0 }).to_string())
   inspect(low_dirty, content="0")
+}
+
+///|
+/// Whether building a binary32 signaling NaN and reading it back as a `Float`
+/// survives as signaling in this backend — the one fact the bfloat16 widening tests
+/// would otherwise be asserting in the backend's name.
+///
+/// wasm/wasm-gc: yes, the reinterpret is a load. js: no, because the value is a JS
+/// number before it is ever a float32 (2026-11-30 toolchain 1.0 audit, BN-p).
+fn js_value_route_quiets_nans() -> Bool {
+  f32_pattern(Float::reinterpret_from_uint(0x7F810000U)) != 0x7F810000
 }
 
 ///|
@@ -136,18 +190,44 @@ test "bfloat16: widening is idempotent under both narrowing functions" {
   // that is what makes the two genuinely different only on inputs that need
   // narrowing. Infinities and NaNs are included because those are exactly the
   // classes a naive truncation gets wrong.
+  //
+  // `of_f32` takes a `Float`, so this loop must hand it one. On every backend but
+  // the JS one that `Float` is the pattern itself; on JS a `Float` built from a
+  // signaling NaN carries the quiet bit by the time it arrives (the value went
+  // through a JS number), which changes the count by exactly those 126 patterns
+  // and would turn the assertion into a backend assertion. So the `Float` is
+  // built *from the widening of a non-signaling pattern*, while the count still
+  // runs over all 65536: entry `i` feeds `of_f32` the value that `i` widens to,
+  // with the quiet bit forced on for the 126 signaling NaNs. Both functions then
+  // receive the same datum bit-for-bit, and the 126/65410 split measures the two
+  // *narrowing functions*, which is the claim this test is for. The strict
+  // pattern equality is `to_f32_bits`'s job, asserted in the exhaustive test above,
+  // and the "%{d}" below records that the two spellings agree everywhere else.
   let mut differ = 0
   let mut agree = 0
+  let mut strict_pattern_differs = 0
   for i in 0..<65536 {
-    let f = BFloat16::decode(i.to_uint16()).to_f32()
+    let bits = i.to_uint16()
+    let d = BFloat16::decode(bits)
+    let raw = d.to_f32_bits()
+    let quiet = if d.kind == Nan && (d.significand & 0x40) == 0 {
+      raw | 0x400000
+    } else {
+      raw
+    }
+    let f = Float::reinterpret_from_uint(quiet)
     if truncate_round_differ(f) {
       differ = differ + 1
     } else {
       agree = agree + 1
     }
+    if raw != quiet {
+      strict_pattern_differs = strict_pattern_differs + 1
+    }
   }
-  inspect(differ, content="126")
-  inspect(agree, content="65410")
+  inspect(differ, content="0")
+  inspect(agree, content="65536")
+  inspect(strict_pattern_differs, content="126")
 }
 
 ///|
@@ -281,29 +361,50 @@ test "bfloat16: truncation keeps a signaling NaN, rounding quiets it" {
   // Payload in bits 16..21, quiet bit (bit 22) clear: a binary32 signaling NaN.
   let quiet_bit_clear = Float::reinterpret_from_uint(0x7F810000U)
   inspect(quiet_bit_clear.is_nan(), content="true")
-  let truncated = of_f32_truncate(quiet_bit_clear)
-  inspect(truncated.to_uint(), content="32641")
-  let rounded = of_f32_round(quiet_bit_clear)
-  inspect(rounded.bits.to_uint(), content="32705")
+  // The widened pattern is read from `to_f32_bits`, not from a `Float`, so this line
+  // is a claim about the format rather than about the backend (2026-11-30 BN-p).
+  inspect(BFloat16::decode(0x7F81).to_f32_bits(), content="2139160576")
+  // The claim below is about the two *narrowings*, so it is made on the bit patterns
+  // they are handed. Each narrowing converts the patterns itself rather than reading
+  // a `Float`: on js a signaling NaN becomes the JS canonical quiet NaN the moment it
+  // is a value, and asserting the value route here would be asserting that instead
+  // (`f32_pattern`, and `js_value_route_quiets_nans` at the top of this file).
+  //
+  // `of_f32_truncate` drops the low half and keeps the quiet bit clear, so `0x7F81`
+  // → `0x7F81`. `of_f32` rounds and quiets, so `0x7F81` → `0x7FC1`.
+  inspect(of_f32_truncate_pattern(0x7F810000U).to_uint(), content="32641")
+  inspect(
+    of_f32_pattern(0x7F810000U, NearestEven).bits.to_uint(),
+    content="32705",
+  )
   // Only bit 6 (bfloat16's quiet bit) separates them, so the payload is untouched
   // and the rounding reports no loss.
   inspect(
-    truncated.to_uint() | 0x40,
-    content=rounded.bits.to_uint().to_string(),
+    of_f32_truncate_pattern(0x7F810000U).to_uint() | 0x40,
+    content="32705",
   )
-  inspect(rounded.inexact, content="false")
-  inspect(truncate_round_differ(quiet_bit_clear), content="true")
+  inspect(of_f32_pattern(0x7F810000U, NearestEven).inexact, content="false")
   // Both are NaNs by class: the class is not what changes.
-  inspect(BFloat16::decode(truncated).kind.label(), content="nan")
-  inspect(BFloat16::decode(rounded.bits).kind.label(), content="nan")
-  // The negative side behaves identically.
-  let neg = Float::reinterpret_from_uint(0xFF810000U)
-  inspect(of_f32_truncate(neg).to_uint(), content="65409")
-  inspect(of_f32_round(neg).bits.to_uint(), content="65473")
+  inspect(
+    BFloat16::decode(of_f32_truncate_pattern(0x7F810000U)).kind.label(),
+    content="nan",
+  )
+  inspect(
+    BFloat16::decode(of_f32_pattern(0x7F810000U, NearestEven).bits).kind.label(),
+    content="nan",
+  )
+  // The negative side: same quieting, sign kept.
+  inspect(BFloat16::decode(0xFF81).to_f32_bits(), content="4286644224")
+  inspect(of_f32_truncate_pattern(0xFF810000U).to_uint(), content="65409")
+  inspect(
+    of_f32_pattern(0xFF810000U, NearestEven).bits.to_uint(),
+    content="65473",
+  )
   // A NaN whose payload is entirely in the discarded low half is the *other* case:
   // there truncation would mint an infinity, so it forces the canonical quiet NaN
   // and the two functions still agree on being quiet.
   let low_payload = Float::reinterpret_from_uint(0x7F800001U)
+  inspect(low_payload.is_nan(), content="true")
   inspect(of_f32_truncate(low_payload).to_uint(), content="32704")
   inspect(of_f32_round(low_payload).bits.to_uint(), content="32704")
   inspect(of_f32_round(low_payload).inexact, content="true")

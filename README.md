@@ -2,7 +2,7 @@
 
 **IEEE 754 数值交换格式的位级编解码器：binary16、bfloat16、decimal32/64/128（DPD）。**
 
-[![MoonBit](https://img.shields.io/badge/MoonBit-0.1.20261102-blueviolet)](https://www.moonbitlang.com/)
+[![MoonBit](https://img.shields.io/badge/MoonBit-1.0.0--rc1*-blueviolet)](https://www.moonbitlang.com/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ---
@@ -59,7 +59,17 @@ try {
 moon check
 moon test
 moon run cmd/bitnum -- value decimal64 A2300000000003D0
+
+# 同一个 CLI 也能跑在 js 后端上（CI 会跑；输出与 wasm 逐字节一致）
+moon run --target js cmd/bitnum -- value decimal64 A2300000000003D0
 ```
+
+**工具链：MoonBit 1.0（`moon 0.1.20261126` / `moonc v1.0.0-rc1`）**，`moon.mod` 里
+`preferred_target = "wasm"`。CI 取 CDN 的 `latest`，然后硬校验 `moon` 不低于
+`0.1.20261124`、`moonc` 不低于 `v1.0.0-rc1`：CDN 只发布 `latest`（带日期的版本 403），
+能钉住的是**语法级别**而不是某个字节版本，所以约束写成「不得更旧」。
+2026-11-30 的工具链 1.0 迁移实测记录见 `../HANDOVER.md` 第三十二节（本仓是唯一一个
+**需要改实现**的：见下面「后端无关」一节）。
 
 ## 用法
 
@@ -148,6 +158,42 @@ max exponent: 96 with a 7-digit coefficient, 90 for anything narrower (zero incl
 完整的实测记录（每条命令 + 真实输出）在 [docs/DEMO.md](docs/DEMO.md)。
 
 ## 目标标准与兼容范围
+
+### 后端无关（wasm / wasm-gc / js 逐位一致）
+
+这一节是 2026-11-30 的工具链 1.0 审计补的，也是本仓唯一一处**实现**改动（BN-p）。
+
+数字格式的意义在**位**上，所以库里的加宽/窄化尽量只做「整数 ↔ 位模式」，不做算术。
+三个后端里只有 wasm 有真正的 f32：js 只有一种 number 类型，`Float` 是 binary64 算完再
+窄化，而且 **JS number 里的 NaN 只有一个安静形态**。实测（`moonc v1.0.0-rc1`，全 65536 个
+bfloat16 模式）：
+
+| 模式类 | wasm / wasm-gc | js |
+|---|---|---|
+| 非 NaN（65282 个） | 加宽后逐位相等 | 同左 |
+| quiet NaN（128 个） | 原样 | 原样 |
+| signaling NaN（126 个，payload 在 bit 16..21） | 原样，仍是 sNaN | `0x7FC0 \| (payload >> 1)` |
+| `0x7F7F` / `0x7FFF`（payload 在 bit 16 不可见） | 原样 | 落到规范 quiet NaN |
+
+**同一处分裂在 `0.1.20261117` 上就有**，1.0 没有引入它，只是把它暴露出来。处理办法不是
+去掰 js 的 NaN 语义（掰不回来），而是把**结论**与**位**分开：
+
+- `to_f32_bits` / `bfloat16_to_f32_bits`：加宽结果作为位模式，纯整数，三后端逐位相等；
+  也是 NaN payload 唯一的可观测入口（`is_nan` 对 quiet / signaling 都是 true）。
+- `f32_pattern`：库自己的「值 → 位模式」读法（wasm 上就是 `reinterpret_as_uint`，js 上是
+  JS number 的规范形态），凡经过 `Float` 值的路径都用它。
+- `of_f32_pattern` / `of_f32_truncate_pattern`：规约作用在位模式上，与后端无关。
+
+另一处是 `pow2_exact`：正规区间（`k >= -1022`）现在由**阶码域构造**给出 2 的幂，
+一次移位、零次浮点运算；原来「先算 Double 再窄化」的写法在 js 上 65536 个模式里有 2 个
+丢了最后一位（`Binary16::to_f64`）。
+
+CLI 也一样：js 上 `node` 也占一个 argv 位置，`@env.args()` 因此多一个元素。五个仓的
+`cmd/*/main.mbt` 用 `#cfg(target="js")` 选起点，wasm / wasm-gc 的行为**完全没动**。
+
+> 注意：**CLI 输出**（`bitnum bits bfloat16 3.14` → `4049`）三后端逐字节一致，因为
+> `Double → Float` 这一步在本仓手里；但**库里的 `Float` 值**在 js 上仍遵循 JS 的 NaN 语义，
+> 那是平台事实，不是本仓能约定的。需要位级结论时请用 `*_bits` / `*_pattern` 入口。
 
 ### 依据
 
@@ -336,3 +382,4 @@ MoonBit 语法要点见 [MOONBIT-GUIDE.md](MOONBIT-GUIDE.md)。
 ## License
 
 Apache-2.0，见 [LICENSE](LICENSE)。
+

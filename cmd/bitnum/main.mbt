@@ -49,8 +49,42 @@ fn usage_text() -> String {
 }
 
 ///|
+/// How many leading strings of `@env.args()` belong to the runtime rather than to
+/// this program.
+///
+/// `@env.args()` is the whole process command line. On the **js backend** the
+/// interpreter is part of it: `node` is `argv[0]` and the compiled program path is
+/// `argv[1]`, so `bitnum bits bfloat16 3.14` arrived as five strings, `args[1]` was
+/// the program path, and every subcommand answered "bad command or wrong argument
+/// count". MEASURED on `moonc v1.0.0-rc1`: the same `help x` is 3 strings on
+/// wasm-gc and 4 on js. It is the same on 0.1.20261117 — a js-build property, not a
+/// 1.0 regression, which is why it is fixed here rather than worked around.
+///
+/// Two `#cfg`-annotated items, because `#cfg` attaches to a declaration and a
+/// statement-level `#cfg` does not parse.
+#cfg(not(target="js"))
+let argv_prefix : Int32 = 1
+
+///|
+#cfg(target="js")
+let argv_prefix : Int32 = 2
+
+///|
+/// `argv` in the shape `dispatch` expects: index 0 is the program, index 1 the
+/// subcommand. On wasm and wasm-gc that is what `@env.args()` already gives; on js
+/// the interpreter is dropped and the program path keeps index 0.
+fn program_argv() -> Array[String] {
+  let all = @env.args()
+  let out : Array[String] = Array::new(capacity=all.length())
+  for i = argv_prefix - 1; i < all.length(); i = i + 1 {
+    out.push(all[i])
+  }
+  out
+}
+
+///|
 fn main raise {
-  let args = @env.args()
+  let args = program_argv()
   if args.length() < 2 {
     eprintln(usage_text())
     @sys.exit(EXIT_USAGE)
